@@ -1,0 +1,3346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UBC Solar · Telemetry</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root {
+  --navy:     #070e18;
+  --navy2:    #0c1622;
+  --navy3:    #111d2c;
+  --navy4:    #172334;
+  --navy5:    #1c2a3c;
+  --gold:     #c8a84b;
+  --gold-dim: #7a6128;
+  --gold-bg:  #c8a84b12;
+  --gold-glow:#c8a84b28;
+  --text:     #d8e2ee;
+  --text-dim: #9aafc4;
+  --muted:    #506070;
+  --border:   #ffffff0c;
+  --border2:  #ffffff16;
+  --border3:  #ffffff24;
+  --green:    #3d9e6b;
+  --red:      #c94f3e;
+  --font:     'IBM Plex Sans', sans-serif;
+  --mono:     'IBM Plex Mono', monospace;
+  --sidebar-w: 244px;
+}
+
+html, body { height:100%; background:var(--navy); color:var(--text); font-family:var(--font); font-size:13px; overflow:hidden; }
+
+.shell { display:flex; flex-direction:column; height:100vh; }
+
+/* ── HEADER ── */
+header {
+  display:flex; align-items:center; gap:0; padding:0; height:38px;
+  background:var(--navy2); border-bottom:1px solid var(--border2);
+  flex-shrink:0; z-index:10;
+}
+
+.logo {
+  font-family:var(--mono); font-size:11px; font-weight:600;
+  color:var(--gold); white-space:nowrap; letter-spacing:.14em;
+  padding:0 18px 0 16px; text-transform:uppercase;
+  border-right:1px solid var(--border2); height:100%;
+  display:flex; align-items:center; gap:0;
+  background:linear-gradient(90deg, rgba(200,168,75,.06) 0%, transparent 100%);
+}
+.logo span { color:var(--text-dim); font-weight:300; margin-left:7px; }
+
+/* ── TOP TABS ── */
+.top-tabs { display:flex; align-items:stretch; gap:0; height:100%; }
+.top-tab {
+  background:transparent; border:none; border-bottom:2px solid transparent;
+  color:var(--muted); font-family:var(--mono); font-size:10px; font-weight:500;
+  padding:0 16px; cursor:pointer; letter-spacing:.09em; text-transform:uppercase;
+  transition:color .12s, border-color .12s, background .12s;
+  border-right:1px solid var(--border);
+}
+.top-tab:hover { color:var(--text-dim); background:rgba(255,255,255,.02); }
+.top-tab.active { color:var(--gold); border-bottom-color:var(--gold); background:var(--gold-bg); }
+
+/* ── SEARCH ── */
+.header-search {
+  margin-left:auto; position:relative; display:flex; align-items:center;
+  padding-right:14px;
+}
+.header-search.hidden { display:none; }
+.header-search input {
+  background:var(--navy3); border:1px solid var(--border2);
+  border-radius:1px;
+  color:var(--text); font-family:var(--mono); font-size:10px;
+  padding:4px 8px 4px 26px; width:160px; outline:none;
+  transition:border-color .15s, width .2s, box-shadow .15s;
+  letter-spacing:.05em;
+}
+.header-search input:focus {
+  border-color:var(--gold); width:200px;
+  box-shadow: 0 0 0 2px var(--gold-glow);
+}
+.header-search input::placeholder { color:var(--muted); }
+.search-icon { position:absolute; left:8px; color:var(--muted); pointer-events:none; }
+
+/* ── BODY LAYOUT ── */
+.body-layout { display:flex; flex:1; min-height:0; overflow:hidden; position:relative; }
+
+/* ── SIDEBAR ── */
+#sidebar {
+  width:var(--sidebar-w); flex-shrink:0;
+  background:var(--navy2); border-right:1px solid var(--border2);
+  display:flex; flex-direction:column; overflow:hidden;
+  transition:width .22s cubic-bezier(.4,0,.2,1);
+}
+#sidebar.collapsed { width:0; border-right:none; }
+#sidebar.hidden { display:none; }
+
+.sidebar-inner { width:var(--sidebar-w); display:flex; flex-direction:column; height:100%; overflow:hidden; }
+
+.sidebar-scroll { flex:1; overflow-y:auto; overflow-x:hidden; }
+.sidebar-scroll::-webkit-scrollbar { width:2px; }
+.sidebar-scroll::-webkit-scrollbar-track { background:transparent; }
+.sidebar-scroll::-webkit-scrollbar-thumb { background:var(--border3); }
+
+/* ── STAGE GROUPS ── */
+.stage-group { border-bottom:1px solid var(--border); }
+.stage-header {
+  display:flex; align-items:center; gap:8px;
+  padding:7px 12px 7px 10px;
+  cursor:pointer; user-select:none;
+  transition:background .08s;
+  position:sticky; top:0; z-index:1;
+  background:var(--navy2);
+}
+.stage-header:hover { background:var(--navy3); }
+.stage-dot { width:5px; height:5px; border-radius:1px; flex-shrink:0; }
+.stage-name {
+  font-family:var(--mono); font-size:9px; font-weight:500;
+  letter-spacing:.1em; text-transform:uppercase; color:var(--muted); flex:1;
+}
+.stage-count {
+  font-family:var(--mono); font-size:8px; color:var(--muted);
+  background:var(--navy4); border:1px solid var(--border);
+  border-radius:1px; padding:1px 5px; flex-shrink:0;
+}
+.stage-chevron { color:var(--muted); transition:transform .18s; flex-shrink:0; }
+.stage-group.open .stage-chevron { transform:rotate(90deg); }
+.stage-signals { display:none; }
+.stage-group.open .stage-signals { display:block; }
+
+/* ── SIGNAL ROWS ── */
+.signal-row {
+  display:flex; align-items:center; gap:0;
+  padding:5px 10px 5px 20px;
+  cursor:pointer; position:relative;
+  transition:background .06s;
+  border-left:2px solid transparent;
+}
+.signal-row:hover { background:var(--navy3); }
+.signal-row.active { background:var(--navy3); border-left-color:var(--stage-color,var(--gold)); }
+.signal-row.active .sig-name { color:var(--stage-color,var(--gold)); }
+.signal-row.hidden-search { display:none; }
+
+.sig-name { font-size:11px; font-weight:400; color:var(--text-dim); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sig-value { font-family:var(--mono); font-size:10px; font-weight:500; color:var(--stage-color,var(--muted)); white-space:nowrap; margin-left:6px; min-width:44px; text-align:right; }
+.sig-unit { font-family:var(--mono); font-size:9px; color:var(--muted); margin-left:2px; }
+.sig-badge { font-family:var(--mono); font-size:8px; font-weight:600; letter-spacing:.04em; color:var(--muted); background:var(--navy5); border:1px solid var(--border); border-radius:1px; padding:1px 4px; margin-left:4px; flex-shrink:0; }
+
+/* ── VITALS STRIP (always-on bar at sidebar bottom) ── */
+.vitals-strip {
+  flex-shrink:0; border-top:1px solid var(--border2);
+  background:var(--navy); padding:8px 10px 7px;
+}
+.vitals-title {
+  font-family:var(--mono); font-size:8px; font-weight:500;
+  letter-spacing:.1em; text-transform:uppercase; color:var(--gold-dim);
+  margin-bottom:7px;
+}
+.vitals-grid { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
+.vital-cell { background:var(--navy2); border:1px solid var(--border); padding:5px 8px; }
+.vital-label { font-family:var(--mono); font-size:8px; color:var(--muted); font-weight:500; margin-bottom:2px; letter-spacing:.06em; text-transform:uppercase; }
+.vital-value { font-family:var(--mono); font-size:14px; font-weight:400; color:var(--text); line-height:1; }
+.vital-unit { font-family:var(--mono); font-size:8px; color:var(--muted); }
+
+/* ══════════════════════════════════════════════
+   OVERVIEW TAB
+══════════════════════════════════════════════ */
+.ov-tab {
+  flex:1; min-height:0; overflow-y:auto; overflow-x:hidden;
+  background:var(--navy);
+  display:none;
+  justify-content:center;
+}
+.ov-tab.active { display:flex; }
+.ov-tab::-webkit-scrollbar { width:2px; }
+.ov-tab::-webkit-scrollbar-track { background:transparent; }
+.ov-tab::-webkit-scrollbar-thumb { background:var(--border3); }
+
+.ov-tab-inner {
+  display:flex; align-items:center; justify-content:center;
+  min-height:100%; width:100%; padding:16px 0;
+}
+
+.ov-layout {
+  display:grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: auto auto;
+  gap:1px;
+  width:min(98vw, 1440px);
+  background:var(--border2);
+  border:1px solid var(--border2);
+  box-shadow: 0 0 0 1px var(--border);
+}
+.ov-layout .ov-card:nth-child(5) { grid-column: span 1; }
+.ov-layout .ov-card:nth-child(6) { grid-column: span 1; }
+.ov-layout .ov-card:nth-child(7) { grid-column: span 2; }
+
+/* 2-column layout for medium screens */
+@media (max-width: 860px) {
+  .ov-layout {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .ov-layout .ov-card:nth-child(5) { grid-column: span 1; }
+  .ov-layout .ov-card:nth-child(6) { grid-column: span 1; }
+  .ov-layout .ov-card:nth-child(7) { grid-column: span 2; }
+}
+
+/* 1-column layout for narrow screens */
+@media (max-width: 480px) {
+  .ov-layout {
+    grid-template-columns: 1fr;
+  }
+  .ov-layout .ov-card:nth-child(5),
+  .ov-layout .ov-card:nth-child(6),
+  .ov-layout .ov-card:nth-child(7) { grid-column: span 1; }
+}
+
+.ov-card {
+  background:var(--navy2);
+  padding:18px 20px;
+  display:flex; flex-direction:column; gap:12px;
+  position:relative;
+}
+.ov-card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:1px;
+  background:linear-gradient(90deg, var(--gold) 0%, transparent 50%);
+  opacity:.4;
+}
+
+.ov-card-label {
+  font-family:var(--mono); font-size:9px; font-weight:500;
+  letter-spacing:.12em; text-transform:uppercase; color:var(--muted);
+}
+
+.ov-big { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+.ov-big-val { font-family:var(--mono); font-size:clamp(32px, 5vw, 52px); font-weight:400; line-height:1; color:var(--text); letter-spacing:-.02em; }
+.ov-big-unit { font-family:var(--mono); font-size:13px; color:var(--muted); }
+
+.ov-row-stats { display:flex; gap:0; flex-wrap:wrap; }
+.ov-stat { display:flex; flex-direction:column; align-items:center; padding:8px 10px; border-right:1px solid var(--border2); flex:1; min-width:60px; }
+.ov-stat:last-child { border-right:none; }
+.ov-stat:first-child { padding-left:0; }
+.ov-stat-label { font-size:10px; color:var(--muted); font-weight:400; text-align:center; margin-bottom:6px; white-space:normal; line-height:1.3; }
+.ov-stat-val { font-family:var(--mono); font-size:clamp(18px, 3vw, 26px); font-weight:400; color:var(--text); line-height:1; }
+.ov-stat-unit { font-family:var(--mono); font-size:10px; color:var(--muted); margin-top:4px; }
+
+/* Progress bars */
+.ov-soc-bar-bg { height:3px; background:var(--navy5); overflow:hidden; }
+.ov-soc-bar-fill { height:100%; background:linear-gradient(90deg,#c94f3e,#c8a84b 45%,#3d9e6b 85%); transition:width .5s ease; }
+.ov-soc-bar-labels { display:flex; justify-content:space-between; font-family:var(--mono); font-size:8px; color:var(--muted); margin-top:5px; }
+
+.ov-track-bar-bg { height:2px; background:var(--navy5); overflow:hidden; margin-top:6px; }
+.ov-track-bar-fill { height:100%; background:linear-gradient(90deg,#3d9e6b,#c8a84b); transition:width .5s ease; }
+
+.ov-pills { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.ov-state-pill {
+  display:flex; align-items:center; gap:6px;
+  background:var(--navy3); border:1px solid var(--border2);
+  border-radius:1px; padding:5px 10px;
+  font-family:var(--mono); font-size:9px; font-weight:500;
+  color:var(--muted); transition:background .2s,border-color .2s,color .2s;
+  letter-spacing:.06em; text-transform:uppercase; white-space:nowrap;
+}
+.ov-state-pill.active-brake { background:#c94f3e0e; border-color:#c94f3e38; color:#c94f3e; }
+.ov-state-pill.active-regen { background:#3d9e6b0e; border-color:#3d9e6b38; color:#3d9e6b; }
+.ov-state-dot { width:5px; height:5px; border-radius:50%; background:var(--muted); flex-shrink:0; transition:background .2s; }
+.active-brake .ov-state-dot { background:#c94f3e; box-shadow:0 0 5px #c94f3e80; }
+.active-regen .ov-state-dot { background:#3d9e6b; box-shadow:0 0 5px #3d9e6b80; }
+
+.view-toggle {
+  display:flex; align-items:center; gap:0;
+  background:var(--navy3); border:1px solid var(--border2); border-radius:1px;
+  overflow:hidden; margin-left:6px; flex-shrink:0;
+}
+.view-toggle.hidden { display:none; }
+.view-btn {
+  display:flex; align-items:center; gap:5px;
+  background:transparent; border:none; color:var(--muted);
+  font-family:var(--mono); font-size:9px; font-weight:500;
+  padding:4px 12px; cursor:pointer; letter-spacing:.08em; text-transform:uppercase;
+  transition:background .1s, color .1s; white-space:nowrap;
+}
+.view-btn + .view-btn { border-left:1px solid var(--border2); }
+.view-btn:hover:not(.on) { color:var(--text-dim); background:rgba(255,255,255,.03); }
+.view-btn.on { background:var(--gold-bg); color:var(--gold); }
+
+/* ── SIDEBAR TOGGLE BUTTON ── */
+#sidebarToggle {
+  position:absolute; left:calc(var(--sidebar-w) - 1px); top:50%; transform:translateY(-50%);
+  width:12px; height:32px; display:flex; align-items:center; justify-content:center;
+  background:var(--navy3); border:1px solid var(--border2); border-left:none;
+  border-radius:0 1px 1px 0; cursor:pointer; z-index:20; transition:left .22s;
+  color:var(--muted); flex-shrink:0;
+}
+#sidebarToggle:hover { color:var(--gold); background:var(--navy4); }
+#sidebarToggle.hidden { display:none; }
+.sidebar-collapsed #sidebarToggle { left:0; }
+
+/* ── MAIN CONTENT ── */
+#mainContent {
+  flex:1; min-width:0; min-height:0; display:flex; flex-direction:column;
+}
+
+/* tabs for calc */
+#dataTab { display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; }
+#dataTab.hidden { display:none; }
+#calcTab { display:none; flex-direction:column; flex:1; min-height:0; overflow:hidden; }
+#calcTab.active { display:flex; }
+#mainArea { display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; }
+
+/* ── PANEL ── */
+.plot-panel { display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; }
+.plot-empty { flex:1; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:8px; }
+.plot-empty-hint { font-family:var(--mono); font-size:12px; font-weight:400; color:var(--muted); text-align:center; letter-spacing:.04em; }
+.plot-empty-sub { font-family:var(--mono); font-size:10px; color:var(--gold-dim); letter-spacing:.04em; }
+
+/* shared toolbar */
+.plot-toolbar {
+  display:flex; align-items:center; gap:14px; padding:8px 16px;
+  border-bottom:1px solid var(--border2); background:var(--navy2);
+  flex-shrink:0; flex-wrap:wrap;
+}
+.plot-name { font-size:13px; font-weight:600; color:var(--card-color,var(--text)); letter-spacing:.02em; }
+.plot-unit-badge { font-family:var(--mono); font-size:10px; font-weight:500; color:var(--muted); border:1px solid var(--border2); border-radius:1px; padding:2px 8px; }
+.plot-help { font-size:11px; color:var(--muted); line-height:1.5; border-left:1px solid var(--gold-dim); padding-left:10px; max-width:340px; flex:1; }
+
+/* time-domain controls */
+.presets { display:flex; gap:4px; }
+.preset { background:transparent; border:1px solid var(--border2); border-radius:1px; color:var(--muted); font-family:var(--mono); font-size:10px; font-weight:500; padding:4px 10px; cursor:pointer; transition:color .12s,border-color .12s,background .12s; letter-spacing:.04em; }
+.preset:hover { color:var(--text-dim); border-color:var(--gold-dim); }
+.preset.on { color:var(--gold); border-color:var(--gold-dim); background:var(--gold-bg); }
+.win-wrap { display:flex; align-items:center; gap:5px; }
+.win-num { width:58px; text-align:right; background:var(--navy3); border:1px solid var(--border2); border-radius:1px; color:var(--text); font-family:var(--mono); font-size:12px; padding:4px 8px; outline:none; }
+.win-num:focus { border-color:var(--gold); box-shadow:0 0 0 2px var(--gold-glow); }
+
+/* ── SIGNAL DESCRIPTION BAR ── */
+.signal-desc-bar {
+  display: none;
+  flex-wrap: wrap;
+  gap: 0;
+  border-bottom: 1px solid var(--border2);
+  background: var(--navy);
+  padding: 0;
+  flex-shrink: 0;
+}
+.signal-desc-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 14px;
+  flex: 1 1 280px;
+  min-width: 0;
+  border-right: 1px solid var(--border);
+}
+.signal-desc-item:last-child { border-right: none; }
+.signal-desc-dot {
+  width: 5px; height: 5px; border-radius:1px; flex-shrink: 0;
+  position: relative; top: -1px;
+}
+.signal-desc-name {
+  font-family:var(--mono); font-size: 10px; font-weight: 600; white-space: nowrap; flex-shrink: 0; letter-spacing: .04em;
+}
+.signal-desc-sep {
+  font-size: 10px; color: var(--muted); flex-shrink: 0;
+}
+.signal-desc-text {
+  font-size: 10px; color: var(--muted); line-height: 1.4; min-width: 0;
+}
+
+/* canvas */
+.canvas-wrap { flex:1; position:relative; min-height:0; }
+#plotCanvas { position:absolute; inset:0; width:100%; height:100%; cursor:grab; }
+#plotCanvas.panning { cursor:grabbing; }
+#plotOverlay { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.plot-tooltip {
+  position:absolute; display:none; pointer-events:none;
+  background:var(--navy2); border:1px solid var(--border3);
+  padding:8px 12px; font-family:var(--mono); font-size:11px;
+  color:var(--text); white-space:nowrap; z-index:10;
+  box-shadow:0 4px 16px rgba(0,0,0,.5);
+  min-width:140px;
+}
+.plot-tooltip-time { font-size:9px; color:var(--muted); letter-spacing:.06em; margin-bottom:6px; text-transform:uppercase; }
+.plot-tooltip-row { display:flex; align-items:center; gap:7px; margin-top:4px; }
+.plot-tooltip-dot { width:6px; height:6px; border-radius:1px; flex-shrink:0; }
+.plot-tooltip-label { color:var(--muted); font-size:10px; flex:1; }
+.plot-tooltip-val { font-size:12px; font-weight:500; }
+.export-btn {
+  display:flex; align-items:center; gap:5px;
+  background:transparent; border:1px solid var(--border2); border-radius:1px;
+  color:var(--muted); font-family:var(--mono); font-size:10px; font-weight:500;
+  padding:4px 10px; cursor:pointer; letter-spacing:.06em; text-transform:uppercase;
+  transition:color .12s, border-color .12s, background .12s; white-space:nowrap; flex-shrink:0;
+}
+.export-btn:hover:not(:disabled) { color:var(--gold); border-color:var(--gold-dim); background:var(--gold-bg); }
+.export-btn:disabled { opacity:.3; cursor:not-allowed; }
+.chart-hint { position:absolute; bottom:30px; right:12px; font-family:var(--mono); font-size:9px; color:var(--muted); opacity:.5; pointer-events:none; letter-spacing:.05em; }
+
+/* ── STATIC MODE CONTROLS ── */
+.mode-toggle {
+  display:flex; align-items:center; gap:0; border:1px solid var(--border2); border-radius:1px; overflow:hidden; flex-shrink:0;
+}
+.mode-btn {
+  background:transparent; border:none; color:var(--muted); font-family:var(--mono);
+  font-size:10px; font-weight:500; padding:4px 11px; cursor:pointer; letter-spacing:.06em;
+  transition:background .12s, color .12s; white-space:nowrap; text-transform:uppercase;
+}
+.mode-btn.on { background:var(--gold-bg); color:var(--gold); }
+.mode-btn:not(.on):hover { color:var(--text-dim); background:rgba(255,255,255,.03); }
+.mode-divider { width:1px; background:var(--border2); align-self:stretch; }
+
+.static-inputs {
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+}
+.static-inputs.hidden { display:none; }
+.ts-label { font-family:var(--mono); font-size:10px; font-weight:500; color:var(--muted); white-space:nowrap; letter-spacing:.04em; }
+.ts-input {
+  background:var(--navy3); border:1px solid var(--border2); border-radius:1px;
+  color:var(--text); font-family:var(--mono); font-size:10px; padding:3px 7px;
+  outline:none; width:148px;
+}
+.ts-input:focus { border-color:var(--gold); box-shadow:0 0 0 2px var(--gold-glow); }
+.ts-apply {
+  background:transparent; border:1px solid var(--border2); border-radius:1px;
+  color:var(--muted); font-family:var(--mono); font-size:10px; font-weight:500;
+  padding:3px 10px; cursor:pointer; white-space:nowrap; letter-spacing:.06em; text-transform:uppercase;
+  transition:color .12s, border-color .12s, background .12s;
+}
+.ts-apply:hover { color:var(--gold); border-color:var(--gold-dim); background:var(--gold-bg); }
+
+/* ── CUSTOM DATETIME PICKER ── */
+.dt-picker {
+  display:inline-flex; align-items:center;
+  background:var(--navy3); border:1px solid var(--border2); border-radius:1px;
+  padding:0 4px; gap:0; transition:border-color .15s; flex-shrink:0;
+}
+.dt-picker:focus-within { border-color:var(--gold); box-shadow:0 0 0 2px var(--gold-glow); }
+.dt-seg {
+  font-family:var(--mono); font-size:12px; font-weight:400; color:var(--text);
+  background:transparent; border:none; outline:none;
+  text-align:center; cursor:ns-resize; user-select:none;
+  padding:5px 2px; border-radius:1px;
+  transition:background .1s, color .1s;
+  -moz-appearance:textfield;
+}
+.dt-seg:focus { background:var(--gold-bg); color:var(--gold); }
+.dt-seg::-webkit-inner-spin-button,
+.dt-seg::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+.dt-sep { font-family:var(--mono); font-size:12px; color:var(--muted); line-height:1; padding:0 1px; pointer-events:none; flex-shrink:0; }
+.dt-sep-space { width:7px; flex-shrink:0; }
+
+.static-badge {
+  font-family:var(--mono); font-size:9px; font-weight:500; color:var(--gold);
+  background:var(--gold-bg); border:1px solid var(--gold-dim); border-radius:1px;
+  padding:2px 7px; letter-spacing:.06em; white-space:nowrap; text-transform:uppercase;
+}
+.static-badge.hidden { display:none; }
+
+/* ── MAP PANEL ── */
+.map-panel { display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; }
+.map-toolbar {
+  display:flex; flex-direction:column;
+  border-bottom:1px solid var(--border2); background:var(--navy2);
+  flex-shrink:0;
+}
+.map-toolbar-row1 {
+  display:flex; align-items:center; flex-wrap:wrap; gap:10px;
+  padding:9px 16px 8px; border-bottom:1px solid var(--border);
+}
+.map-toolbar-row1 .plot-name { flex-shrink:0; margin-right:4px; }
+.map-toolbar-row2 {
+  display:flex; align-items:center; flex-wrap:wrap; gap:10px;
+  padding:8px 16px;
+}
+.color-by { display:flex; align-items:center; gap:7px; flex-shrink:0; }
+.color-by-label { font-family:var(--mono); font-size:10px; font-weight:500; color:var(--muted); white-space:nowrap; letter-spacing:.04em; }
+.color-by select {
+  background:var(--navy3); border:1px solid var(--border2); border-radius:1px;
+  color:var(--text); font-family:var(--mono); font-size:11px; padding:4px 10px;
+  outline:none; cursor:pointer;
+}
+.color-by select:focus { border-color:var(--gold); }
+.scrubber-wrap {
+  display:flex; align-items:center; gap:7px; flex:1 1 260px; min-width:0;
+}
+.scrubber-label { font-family:var(--mono); font-size:10px; font-weight:500; color:var(--muted); white-space:nowrap; flex-shrink:0; letter-spacing:.04em; }
+input[type=range] { flex:1; min-width:80px; accent-color:var(--gold); height:2px; cursor:pointer; }
+.replay-btn {
+  background:transparent; border:1px solid var(--border2); border-radius:1px;
+  color:var(--muted); font-family:var(--mono); font-size:10px; font-weight:500;
+  padding:4px 14px; cursor:pointer; white-space:nowrap; flex-shrink:0; letter-spacing:.06em; text-transform:uppercase;
+  transition:color .12s,border-color .12s,background .12s;
+}
+.replay-btn:hover { color:var(--text-dim); border-color:var(--gold); }
+.replay-btn.playing { color:var(--gold); border-color:var(--gold-dim); background:var(--gold-bg); }
+.speed-wrap { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.speed-label { font-family:var(--mono); font-size:10px; color:var(--muted); }
+.speed-select { background:var(--navy3); border:1px solid var(--border2); border-radius:1px; color:var(--text); font-family:var(--mono); font-size:11px; padding:3px 8px; outline:none; }
+.map-legend { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.legend-grad { width:80px; height:4px; border-radius:0; background:linear-gradient(to right,#3d9e6b,#c8a84b,#c94f3e); }
+.legend-lo, .legend-hi { font-family:var(--mono); font-size:9px; color:var(--muted); }
+.map-wrap { flex:1; position:relative; min-height:0; }
+#leafletMap { position:absolute; inset:0; }
+
+/* ── CALCULATIONS TAB ── */
+.calc-toolbar {
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  padding:9px 20px; background:var(--navy2);
+  border-bottom:1px solid var(--border2); flex-shrink:0;
+}
+.calc-toolbar-label { font-family:var(--mono); font-size:9px; font-weight:500; color:var(--gold); letter-spacing:.1em; text-transform:uppercase; white-space:nowrap; }
+.calc-body {
+  flex:1; overflow-y:auto; padding:20px 20px 32px; background:var(--navy);
+}
+.calc-body::-webkit-scrollbar { width:2px; }
+.calc-body::-webkit-scrollbar-thumb { background:var(--border3); }
+.calc-empty { height:100%; display:flex; align-items:center; justify-content:center; }
+
+/* ── COLLAPSIBLE SECTIONS ── */
+.calc-section {
+  margin-bottom:8px; border:1px solid var(--border2); overflow:hidden; background:var(--navy2);
+}
+.calc-section-header {
+  display:flex; align-items:center; gap:10px;
+  padding:9px 16px; cursor:pointer; user-select:none;
+  background:var(--navy2); transition:background .1s;
+  border-bottom:1px solid transparent;
+}
+.calc-section-header:hover { background:var(--navy3); }
+.calc-section.open .calc-section-header { border-bottom-color:var(--border); }
+.calc-section-title {
+  font-family:var(--mono); font-size:10px; font-weight:500; color:var(--gold);
+  letter-spacing:.1em; text-transform:uppercase; flex:1;
+}
+.calc-section-chevron {
+  color:var(--muted); transition:transform .18s; flex-shrink:0;
+}
+.calc-section.open .calc-section-chevron { transform:rotate(90deg); }
+.calc-section-body { display:none; padding:14px 16px 16px; }
+.calc-section.open .calc-section-body { display:block; }
+
+/* ── LAP MODE TOOLBAR ── */
+.calc-range-mode {
+  display:flex; align-items:center; gap:0;
+  border:1px solid var(--border2); border-radius:1px; overflow:hidden; flex-shrink:0;
+}
+.calc-mode-btn {
+  background:transparent; border:none; color:var(--muted); font-family:var(--mono);
+  font-size:10px; font-weight:500; padding:4px 12px; cursor:pointer; letter-spacing:.07em; text-transform:uppercase;
+  transition:background .12s, color .12s; white-space:nowrap;
+}
+.calc-mode-btn + .calc-mode-btn { border-left:1px solid var(--border2); }
+.calc-mode-btn.on { background:var(--gold-bg); color:var(--gold); }
+.calc-mode-btn:not(.on):hover { color:var(--text-dim); background:rgba(255,255,255,.03); }
+
+.calc-inputs-time { display:flex; align-items:center; gap:8px; }
+.calc-inputs-lap  { display:flex; align-items:center; gap:8px; }
+.calc-inputs-time.hidden, .calc-inputs-lap.hidden { display:none; }
+
+.lap-input {
+  background:var(--navy3); border:1px solid var(--border2); border-radius:1px;
+  color:var(--text); font-family:var(--mono); font-size:12px; font-weight:500;
+  padding:3px 8px; outline:none; width:62px; text-align:center;
+  -moz-appearance:textfield;
+}
+.lap-input::-webkit-inner-spin-button, .lap-input::-webkit-outer-spin-button { -webkit-appearance:none; }
+.lap-input:focus { border-color:var(--gold); box-shadow:0 0 0 2px var(--gold-glow); }
+.lap-range-sep { font-family:var(--mono); font-size:11px; color:var(--muted); }
+.lap-single-toggle {
+  background:transparent; border:1px solid var(--border2); border-radius:1px;
+  color:var(--muted); font-family:var(--mono); font-size:10px; font-weight:500;
+  padding:3px 9px; cursor:pointer; white-space:nowrap; letter-spacing:.06em; text-transform:uppercase;
+  transition:color .12s, border-color .12s, background .12s;
+}
+.lap-single-toggle:hover { color:var(--text-dim); border-color:var(--gold-dim); }
+.lap-single-toggle.on { color:var(--gold); border-color:var(--gold-dim); background:var(--gold-bg); }
+
+/* chart stage groups inside the charts section */
+.chart-stages-wrap { display:flex; flex-direction:column; gap:6px; }
+.chart-stage-group { border:1px solid var(--border); overflow:hidden; }
+.chart-stage-header {
+  display:flex; align-items:center; gap:8px; padding:7px 14px;
+  cursor:pointer; user-select:none; background:var(--navy3);
+  transition:background .1s;
+}
+.chart-stage-header:hover { background:var(--navy4); }
+.chart-stage-dot { width:5px; height:5px; border-radius:1px; flex-shrink:0; }
+.chart-stage-name { font-family:var(--mono); font-size:10px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); flex:1; }
+.chart-stage-count { font-family:var(--mono); font-size:9px; color:var(--muted); background:var(--navy4); border-radius:1px; padding:1px 6px; }
+.chart-stage-chevron { color:var(--muted); transition:transform .18s; flex-shrink:0; }
+.chart-stage-group.open .chart-stage-chevron { transform:rotate(90deg); }
+.chart-stage-body { display:none; padding:12px; background:var(--navy2); }
+.chart-stage-group.open .chart-stage-body { display:block; }
+
+/* lap breakdown table */
+.lap-table { width:100%; border-collapse:collapse; font-size:11px; margin-top:4px; }
+.lap-table th { font-family:var(--mono); font-size:9px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); padding:6px 10px; border-bottom:1px solid var(--border2); text-align:left; }
+.lap-table td { font-family:var(--mono); padding:7px 10px; border-bottom:1px solid var(--border); color:var(--text-dim); }
+.lap-table tr:last-child td { border-bottom:none; }
+.lap-table tr:hover td { background:var(--navy3); }
+.lap-table .td-num { font-weight:500; color:var(--gold); }
+.lap-table .td-val { font-variant-numeric:tabular-nums; }
+
+.stat-grid {
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:8px; margin-bottom:4px;
+}
+.stat-card {
+  background:var(--navy3); border:1px solid var(--border);
+  border-top:2px solid var(--card-color,var(--gold));
+  padding:12px 14px;
+}
+.stat-card-label { font-size:10px; font-weight:400; color:var(--muted); margin-bottom:5px; letter-spacing:.04em; }
+.stat-card-value { font-family:var(--mono); font-size:22px; font-weight:400; color:var(--card-color,var(--text)); line-height:1.1; }
+.stat-card-unit { font-family:var(--mono); font-size:11px; font-weight:400; color:var(--muted); margin-left:3px; }
+.mini-charts-grid {
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:10px; margin-bottom:4px;
+}
+.mini-chart-card {
+  background:var(--navy3); border:1px solid var(--border); overflow:hidden;
+  transition: border-color .15s;
+}
+.mini-chart-title {
+  font-family:var(--mono); font-size:10px; font-weight:500; color:var(--muted);
+  padding:7px 12px 6px; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:6px; letter-spacing:.04em; text-transform:uppercase;
+}
+.mini-chart-title .dot { width:6px;height:6px;border-radius:1px;flex-shrink:0; }
+.mini-chart-goto { font-size:10px; color:var(--muted); opacity:0; transition:opacity .15s; margin-left:2px; }
+.mini-chart-card:hover .mini-chart-goto { opacity:1; }
+.mini-chart-canvas { display:block; width:100%; height:120px; }
+
+/* ── LAP ANALYSIS TAB ── */
+.la-tab {
+  flex:1; min-height:0; overflow:hidden;
+  display:flex; flex-direction:column; background:var(--navy);
+}
+.la-tab.hidden { display:none; }
+
+.la-toolbar {
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:9px 20px; background:var(--navy2);
+  border-bottom:1px solid var(--border2); flex-shrink:0;
+}
+.la-toolbar-label { font-family:var(--mono); font-size:9px; font-weight:500; color:var(--gold); letter-spacing:.1em; text-transform:uppercase; white-space:nowrap; }
+
+.la-metric-select-wrap select {
+  background:var(--navy3); border:1px solid var(--border2); border-radius:1px;
+  color:var(--text); font-family:var(--mono); font-size:12px;
+  padding:5px 12px; outline:none; cursor:pointer; min-width:220px;
+}
+.la-metric-select-wrap select:focus { border-color:var(--gold); }
+.la-metric-select-wrap select option { background:var(--navy3); }
+
+.la-agg-toggle {
+  display:flex; align-items:center; gap:0;
+  border:1px solid var(--border2); border-radius:1px; overflow:hidden;
+}
+.la-agg-btn {
+  background:transparent; border:none; color:var(--muted); font-family:var(--mono);
+  font-size:10px; font-weight:500; padding:5px 12px; cursor:pointer; letter-spacing:.06em; text-transform:uppercase;
+  transition:background .12s, color .12s; white-space:nowrap;
+}
+.la-agg-btn + .la-agg-btn { border-left:1px solid var(--border2); }
+.la-agg-btn.on { background:var(--gold-bg); color:var(--gold); }
+.la-agg-btn:not(.on):hover { color:var(--text-dim); background:rgba(255,255,255,.03); }
+
+.la-body {
+  flex:1; display:flex; flex-direction:column; min-height:0; overflow:hidden;
+  padding:18px;
+}
+.la-empty {
+  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
+}
+.la-empty.hidden { display:none; }
+
+.la-chart-wrap {
+  flex:1; position:relative; min-height:0;
+}
+.la-chart-wrap.hidden { display:none; }
+#laCanvas { position:absolute; inset:0; width:100%; height:100%; }
+
+.la-stats-row {
+  display:flex; gap:8px; flex-wrap:wrap; flex-shrink:0; margin-top:12px;
+}
+.la-stats-row.hidden { display:none; }
+.la-stat-card {
+  background:var(--navy2); border:1px solid var(--border);
+  border-top:2px solid var(--gold-dim);
+  padding:10px 16px; flex:1 1 120px;
+}
+.la-stat-card-label { font-family:var(--mono); font-size:9px; font-weight:500; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
+.la-stat-card-val { font-family:var(--mono); font-size:20px; font-weight:400; color:var(--text); line-height:1; }
+.la-stat-card-unit { font-family:var(--mono); font-size:10px; color:var(--muted); margin-left:3px; }
+
+.leaflet-layer,.leaflet-control-zoom-in,.leaflet-control-zoom-out,.leaflet-control-attribution {
+  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+}
+.leaflet-control-attribution { background:rgba(7,14,24,.8) !important; color:var(--muted) !important; font-size:9px !important; }
+.leaflet-control-attribution a { color:var(--muted) !important; }
+.leaflet-bar a { background:var(--navy2) !important; color:var(--text) !important; border-color:var(--border2) !important; }
+.leaflet-bar a:hover { background:var(--navy3) !important; }
+
+/* ── SOURCE TOGGLE ── */
+.source-toggle {
+  display:flex; align-items:center; gap:0;
+  margin-left:auto; margin-right:14px; flex-shrink:0;
+  background:var(--navy3); border:1px solid var(--border2); border-radius:1px;
+  overflow:hidden; position:relative;
+}
+.source-btn {
+  display:flex; align-items:center; gap:6px;
+  background:transparent; border:none; color:var(--muted);
+  font-family:var(--mono); font-size:10px; font-weight:500;
+  padding:0 13px; height:24px; cursor:pointer; letter-spacing:.08em;
+  text-transform:uppercase; transition:background .12s, color .12s;
+  white-space:nowrap; position:relative; z-index:1;
+}
+.source-btn + .source-btn { border-left:1px solid var(--border2); }
+.source-btn:hover:not(.active) { color:var(--text-dim); background:rgba(255,255,255,.03); }
+.source-btn.active.sim-active { background:var(--navy4); color:var(--text-dim); border-color:var(--border3); }
+.source-btn.active.car-active { background:rgba(61,158,107,.12); color:#3d9e6b; border-color:rgba(61,158,107,.35); }
+.source-dot {
+  width:5px; height:5px; border-radius:50%; flex-shrink:0;
+  background:var(--muted); transition:background .2s, box-shadow .2s;
+}
+.sim-active .source-dot { background:var(--text-dim); }
+.car-active .source-dot { background:#3d9e6b; box-shadow:0 0 5px #3d9e6b99; }
+.source-badge {
+  font-family:var(--mono); font-size:8px; font-weight:600; letter-spacing:.06em;
+  padding:2px 6px; border-radius:1px; margin-left:2px; flex-shrink:0;
+  text-transform:uppercase; transition:all .2s;
+}
+.source-badge.sim  { background:var(--navy5); color:var(--muted); border:1px solid var(--border); }
+.source-badge.car  { background:rgba(61,158,107,.15); color:#3d9e6b; border:1px solid rgba(61,158,107,.35); }
+.source-badge.live { background:rgba(201,168,75,.12); color:var(--gold); border:1px solid var(--gold-dim); }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header>
+    <div class="logo">UBC <span>Solar</span></div>
+    <nav class="top-tabs">
+      <button class="top-tab active" id="tabOverview" onclick="switchTab('overview')">Overview</button>
+      <button class="top-tab" id="tabData" onclick="switchTab('data')">Data</button>
+      <button class="top-tab" id="tabMap" onclick="switchTab('map')">Map</button>
+      <button class="top-tab" id="tabCalc" onclick="switchTab('calc')">Calculations</button>
+      <button class="top-tab" id="tabLapAnalysis" onclick="switchTab('lapanalysis')">Lap Analysis</button>
+    </nav>
+    <!-- ── DATA SOURCE TOGGLE ── -->
+    <div class="source-toggle" id="sourceToggle">
+      <button class="source-btn active sim-active" id="srcSimBtn" onclick="setSource('sim')">
+        <span class="source-dot"></span>Simulator
+        <span class="source-badge sim" id="srcSimBadge">SIM</span>
+      </button>
+      <button class="source-btn" id="srcCarBtn" onclick="setSource('car')">
+        <span class="source-dot"></span>Car
+        <span class="source-badge car" id="srcCarBadge">STANDBY</span>
+      </button>
+    </div>
+    <div class="header-search">
+      <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input type="text" placeholder="Search signals…" id="signalSearch" oninput="filterSignals(this.value)">
+    </div>
+  </header>
+
+  <div class="body-layout" id="bodyLayout">
+
+    <!-- ── SIDEBAR ── -->
+    <div id="sidebar">
+      <div class="sidebar-inner">
+
+        <div class="sidebar-scroll" id="sidebarScroll"></div>
+
+        <!-- (map toggle moved to header) -->
+
+
+
+      </div>
+    </div>
+
+    <!-- Sidebar toggle (sibling of sidebar so it tracks the sidebar edge) -->
+    <div id="sidebarToggle" onclick="toggleSidebar()">
+      <svg id="sidebarToggleIcon" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <polyline points="6 2 3 5 6 8"/>
+      </svg>
+    </div>
+
+    <!-- ── MAIN CONTENT ── -->
+    <div id="mainContent">
+
+      <!-- Overview tab -->
+      <div id="overviewTab" class="ov-tab">
+        <div class="ov-tab-inner">
+        <div class="ov-layout">
+
+          <!-- 1: SOC -->
+          <div class="ov-card">
+            <div class="ov-card-label">State of Charge</div>
+            <div class="ov-big">
+              <span class="ov-big-val" id="ovSocPct" style="color:#3d9e6b">—</span>
+              <span class="ov-big-unit">%</span>
+            </div>
+            <div class="ov-soc-bar-bg"><div class="ov-soc-bar-fill" id="ovSocFill" style="width:0%"></div></div>
+            <div class="ov-soc-bar-labels"><span style="color:#c94f3e">20%</span><span style="color:#c9a84c">50%</span><span style="color:#3d9e6b">100%</span></div>
+          </div>
+
+          <!-- 2: Speed -->
+          <div class="ov-card">
+            <div class="ov-card-label">Speed</div>
+            <div class="ov-big">
+              <span class="ov-big-val" id="ovSpeed" style="color:#60a5fa">—</span>
+              <span class="ov-big-unit">m/s</span>
+            </div>
+            <div style="font-size:13px;color:var(--muted);"><span id="ovSpeedKmh">—</span> km/h</div>
+          </div>
+
+          <!-- 3: Lap & Track -->
+          <div class="ov-card">
+            <div class="ov-card-label">Lap &amp; Position</div>
+            <div class="ov-big">
+              <span class="ov-big-val" id="ovLap" style="color:#f472b6">—</span>
+              <span class="ov-big-unit">lap</span>
+            </div>
+            <div style="font-size:11px;color:var(--muted);">Track: <span id="ovTrackDist" style="color:var(--text)">—</span> / 5040 m</div>
+            <div class="ov-track-bar-bg"><div class="ov-track-bar-fill" id="ovTrackFill" style="width:0%"></div></div>
+          </div>
+
+          <!-- 4: Pack -->
+          <div class="ov-card">
+            <div class="ov-card-label">Battery</div>
+            <div class="ov-row-stats">
+              <div class="ov-stat">
+                <div class="ov-stat-label">Voltage</div>
+                <div class="ov-stat-val" id="ovPackVoltage" style="color:#60a5fa">—</div>
+                <div class="ov-stat-unit">V</div>
+              </div>
+              <div class="ov-stat">
+                <div class="ov-stat-label">Current</div>
+                <div class="ov-stat-val" id="ovPackCurrent" style="color:#60a5fa">—</div>
+                <div class="ov-stat-unit">A</div>
+              </div>
+              <div class="ov-stat">
+                <div class="ov-stat-label">Weakest Cell</div>
+                <div class="ov-stat-val" id="ovWeakCell">—</div>
+                <div class="ov-stat-unit">V</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5: Power -->
+          <div class="ov-card">
+            <div class="ov-card-label">Power</div>
+            <div class="ov-row-stats">
+              <div class="ov-stat">
+                <div class="ov-stat-label">Pack</div>
+                <div class="ov-stat-val" id="ovPackPower">—</div>
+                <div class="ov-stat-unit">W</div>
+              </div>
+              <div class="ov-stat">
+                <div class="ov-stat-label">Motor</div>
+                <div class="ov-stat-val" id="ovMotorPower">—</div>
+                <div class="ov-stat-unit">W</div>
+              </div>
+            </div>
+            <div class="ov-pills">
+              <div class="ov-state-pill" id="ovBrakePill"><span class="ov-state-dot" id="ovBrakeDot"></span><span id="ovBrakeLabel">Brake OFF</span></div>
+              <div class="ov-state-pill" id="ovRegenPill"><span class="ov-state-dot" id="ovRegenDot"></span><span id="ovRegenLabel">Regen OFF</span></div>
+            </div>
+          </div>
+
+          <!-- 6: Solar & Efficiency -->
+          <div class="ov-card">
+            <div class="ov-card-label">Solar &amp; Efficiency</div>
+            <div class="ov-row-stats">
+              <div class="ov-stat">
+                <div class="ov-stat-label">GHI</div>
+                <div class="ov-stat-val" id="ovGHI" style="color:#c9a84c">—</div>
+                <div class="ov-stat-unit">W/m²</div>
+              </div>
+              <div class="ov-stat">
+                <div class="ov-stat-label">Eff 5-min</div>
+                <div class="ov-stat-val" id="ovEff5m" style="color:#a78bfa">—</div>
+                <div class="ov-stat-unit">J/m</div>
+              </div>
+              <div class="ov-stat">
+                <div class="ov-stat-label">Eff 1-hr</div>
+                <div class="ov-stat-val" id="ovEff1h" style="color:#a78bfa">—</div>
+                <div class="ov-stat-unit">J/m</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 7: Weather -->
+          <div class="ov-card">
+            <div class="ov-card-label">Weather</div>
+            <div class="ov-row-stats">
+              <div class="ov-stat">
+                <div class="ov-stat-label">Air Temp</div>
+                <div class="ov-stat-val" id="ovAirTemp" style="color:#38bdf8">—</div>
+                <div class="ov-stat-unit">°C</div>
+              </div>
+              <div class="ov-stat">
+                <div class="ov-stat-label">Wind</div>
+                <div class="ov-stat-val" id="ovWindSpd" style="color:#38bdf8">—</div>
+                <div class="ov-stat-unit">m/s</div>
+              </div>
+              <div class="ov-stat">
+                <div class="ov-stat-label">Wind Dir</div>
+                <div class="ov-stat-val" id="ovWindDir" style="color:#38bdf8">—</div>
+                <div class="ov-stat-unit">°</div>
+              </div>
+              <div class="ov-stat">
+                <div class="ov-stat-label">Zenith</div>
+                <div class="ov-stat-val" id="ovZenith" style="color:#38bdf8">—</div>
+                <div class="ov-stat-unit">°</div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /.ov-layout -->
+        </div><!-- /.ov-tab-inner -->
+      </div>
+      <div id="dataTab" class="hidden">
+        <div id="mainArea">
+          <div class="plot-panel" id="plotPanel">
+            <div class="plot-empty">
+              <div class="plot-empty-hint">Select a signal from the sidebar to view its plot</div>
+              <div class="plot-empty-sub">Hold Ctrl / ⌘ to overlay up to 3 signals</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Map tab -->
+      <div id="mapTab" style="display:none;flex:1;min-height:0;flex-direction:column;overflow:hidden;"></div>
+
+      <!-- Calculations tab -->
+      <div id="calcTab">
+        <div class="calc-toolbar">
+          <!-- Mode toggle: Time vs Lap -->
+          <div class="calc-range-mode">
+            <button class="calc-mode-btn on" id="calcModeTime" onclick="setCalcMode('time')">Time</button>
+            <button class="calc-mode-btn" id="calcModeLap" onclick="setCalcMode('lap')">Lap</button>
+          </div>
+
+          <!-- Time inputs -->
+          <div class="calc-inputs-time" id="calcInputsTime">
+            <span class="ts-label">From</span>
+            <span id="dtCalcFrom" class="dt-picker"></span>
+            <span class="ts-label">To</span>
+            <span id="dtCalcTo" class="dt-picker"></span>
+          </div>
+
+          <!-- Lap inputs -->
+          <div class="calc-inputs-lap hidden" id="calcInputsLap">
+            <span class="ts-label">Lap</span>
+            <input class="lap-input" type="number" id="lapFrom" min="0" max="999" value="1" placeholder="1">
+            <span class="lap-range-sep" id="lapRangeSep">→</span>
+            <input class="lap-input" type="number" id="lapTo" min="0" max="999" value="1" placeholder="1" id="lapTo">
+            <button class="lap-single-toggle" id="lapSingleBtn" onclick="toggleLapSingle()">Single lap</button>
+          </div>
+
+          <button class="ts-apply" onclick="runCalculations()">Analyse</button>
+          <span id="calcStatus" class="static-badge hidden"></span>
+        </div>
+        <div id="calcBody" class="calc-body">
+          <div class="calc-empty">
+            <div class="plot-empty-hint">Set a time range or lap and click Analyse</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lap Analysis tab -->
+      <div id="lapAnalysisTab" class="la-tab hidden">
+        <div class="la-toolbar">
+          <span class="la-toolbar-label">Metric</span>
+          <div class="la-metric-select-wrap">
+            <select id="laMetricSelect" onchange="renderLapAnalysis()">
+              <option value="">— pick a metric —</option>
+            </select>
+          </div>
+          <span class="la-toolbar-label" style="margin-left:8px">Aggregation</span>
+          <div class="la-agg-toggle">
+            <button class="la-agg-btn on" id="laAggMean"   onclick="setLaAgg('mean')">Mean</button>
+            <button class="la-agg-btn" id="laAggMedian" onclick="setLaAgg('median')">Median</button>
+            <button class="la-agg-btn" id="laAggMax"    onclick="setLaAgg('max')">Max</button>
+            <button class="la-agg-btn" id="laAggMin"    onclick="setLaAgg('min')">Min</button>
+          </div>
+          <span class="la-toolbar-label" style="margin-left:8px">Laps</span>
+          <div style="display:flex;align-items:center;gap:5px;">
+            <input id="laLapFrom" type="number" min="0" max="999" value="1"
+              style="width:54px;text-align:center;background:var(--navy3);border:1px solid var(--border2);border-radius:4px;color:var(--text);font-family:var(--font);font-size:13px;font-weight:600;padding:4px 6px;outline:none;"
+              oninput="renderLapAnalysis()"
+              onfocus="this.style.borderColor='var(--gold)'"
+              onblur="this.style.borderColor='var(--border2)'">
+            <span style="font-size:11px;font-weight:500;color:var(--muted)">→</span>
+            <input id="laLapTo" type="number" min="0" max="999" value="999"
+              style="width:54px;text-align:center;background:var(--navy3);border:1px solid var(--border2);border-radius:4px;color:var(--text);font-family:var(--font);font-size:13px;font-weight:600;padding:4px 6px;outline:none;"
+              oninput="renderLapAnalysis()"
+              onfocus="this.style.borderColor='var(--gold)'"
+              onblur="this.style.borderColor='var(--border2)'">
+          </div>
+        </div>
+        <div class="la-body">
+          <div class="la-empty hidden" id="laEmpty"></div>
+          <div class="la-chart-wrap hidden" id="laChartWrap">
+            <canvas id="laCanvas"></canvas>
+            <div id="laTooltip" style="display:none;position:absolute;pointer-events:none;background:var(--navy2);border:1px solid var(--border3);padding:6px 10px;font-family:var(--mono);font-size:11px;color:var(--text);white-space:nowrap;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,.4);"></div>
+          </div>
+          <div class="la-stats-row hidden" id="laStatsRow"></div>
+        </div>
+      </div>
+
+    </div><!-- /#mainContent -->
+  </div><!-- /.body-layout -->
+</div><!-- /.shell -->
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+if (typeof L === 'undefined') {
+  document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0d1b2a;font-family:'IBM Plex Mono',monospace;color:#f0f4f8;flex-direction:column;gap:16px;padding:32px;text-align:center"><div style="font-size:18px;font-weight:700;color:#c94f3e">Leaflet failed to load</div><div style="font-size:13px;color:#7a8fa3;max-width:400px;line-height:1.7">This page needs an internet connection to load Leaflet from <code style="color:#c9a84c">unpkg.com</code>.</div></div>`;
+  throw new Error('Leaflet not loaded');
+}
+
+// ─── SIGNAL DEFINITIONS ──────────────────────────────────────────────────────
+// Stages with color identities
+const STAGES = [
+  { id:'ingress',      label:'Ingress',      color:'#60a5fa' },
+  { id:'power',        label:'Power',        color:'#c94f3e' },
+  { id:'energy',       label:'Energy',       color:'#3d9e6b' },
+  { id:'efficiency',   label:'Efficiency',   color:'#a78bfa' },
+  { id:'localization', label:'Localization', color:'#f472b6' },
+  { id:'weather',      label:'Weather',      color:'#38bdf8' },
+  { id:'soc',          label:'SOC',          color:'#c9a84c' },
+];
+
+// Full signal manifest — all 38 signals
+const SIGNALS = [
+  // ── Ingress ──
+  { field:'TotalPackVoltage',    stage:'ingress',    label:'Pack Voltage',        unit:'V',    color:'#60a5fa', decimals:1, yMin:80,  yMax:160, help:'Voltage of the battery pack.' },
+  { field:'AcceleratorPosition', stage:'ingress',    label:'Throttle Position',    unit:'',     color:'#60a5fa', decimals:2, yMin:0,   yMax:1,   help:'Decimal percentage (0–1) of accelerator position.' },
+  { field:'BatteryCurrent',      stage:'ingress',    label:'Battery Current',     unit:'A',    color:'#60a5fa', decimals:1, yMin:-50, yMax:200, help:'Current flowing into the motor (+draw, −regen).' },
+  { field:'BatteryVoltage',      stage:'ingress',    label:'Motor Voltage',       unit:'V',    color:'#60a5fa', decimals:1, yMin:0,   yMax:160, help:'Voltage experienced by the motor.' },
+  { field:'CurrentSensor1',      stage:'ingress',    label:'Array Current 1',     unit:'A',    color:'#60a5fa', decimals:2, yMin:0,   yMax:10,  help:'Current of solar array string 1.' },
+  { field:'CurrentSensor2',      stage:'ingress',    label:'Array Current 2',     unit:'A',    color:'#60a5fa', decimals:2, yMin:0,   yMax:10,  help:'Current of solar array string 2.' },
+  { field:'MechBrakePressed',    stage:'ingress',    label:'Brake Applied',         unit:'',     color:'#60a5fa', decimals:0, yMin:0,   yMax:1,   help:'Mechanical brake state: 0=released, 1=pressed.' },
+  { field:'PackCurrent',         stage:'ingress',    label:'Pack Current',        unit:'A',    color:'#60a5fa', decimals:1, yMin:-50, yMax:200, help:'Signed current out of battery (+draw, −charge).' },
+  { field:'VehicleVelocity',     stage:'ingress',    label:'Speed',    unit:'m/s',  color:'#60a5fa', decimals:1, yMin:0,   yMax:50,  help:'Speed of Brightside in m/s.' },
+  { field:'SteeringAngle',       stage:'ingress',    label:'Steering Angle',      unit:'°',    color:'#60a5fa', decimals:1, yMin:-180, yMax:180, help:'Steering wheel angle. 0=straight, positive=right, negative=left.' },
+  { field:'VoltSensor1',         stage:'ingress',    label:'Array Voltage 1',     unit:'V',    color:'#60a5fa', decimals:1, yMin:0,   yMax:80,  help:'Voltage of solar array string 1.' },
+  { field:'VoltSensor2',         stage:'ingress',    label:'Array Voltage 2',     unit:'V',    color:'#60a5fa', decimals:1, yMin:0,   yMax:80,  help:'Voltage of solar array string 2.' },
+  { field:'VoltageofLeast',      stage:'ingress',    label:'Weakest Cell Voltage',    unit:'V',    color:'#60a5fa', decimals:2, yMin:2.5, yMax:4.2, help:'Voltage of the battery module with lowest voltage.' },
+
+  // ── Power ──
+  { field:'PackPower',           stage:'power',      label:'Pack Power',          unit:'W',    color:'#c94f3e', decimals:0, yMin:-1000, yMax:15000, help:'Net power leaving the battery in W.' },
+  { field:'MotorPower',          stage:'power',      label:'Motor Power',         unit:'W',    color:'#c94f3e', decimals:0, yMin:-2000, yMax:10000, help:'Net power used by the motor. Negative = regen.' },
+
+  // ── Energy ──
+  { field:'EnergyVOLExtrapolated',       stage:'energy', label:'Energy (Voltage Est.)',    unit:'Wh',   color:'#3d9e6b', decimals:0, yMin:0,    yMax:5000,  help:'Battery energy estimated from VoltageofLeast & SANYO NCR18650GA datasheet.' },
+  { field:'EnergyFromIntegratedPower',   stage:'energy', label:'Energy (Coulomb Count)',unit:'Wh',   color:'#3d9e6b', decimals:0, yMin:0,    yMax:5000,  help:'Coulomb-counting energy estimate. Smoother short-term, may drift long-term.' },
+
+  // ── Efficiency ──
+  { field:'Efficiency1Hour',     stage:'efficiency', label:'Efficiency 1-hr',     unit:'J/m',  color:'#a78bfa', decimals:1, yMin:0,   yMax:800,   help:'Driving efficiency averaged over 1-hour periods.' },
+  { field:'Efficiency5Minute',   stage:'efficiency', label:'Efficiency 5-min',    unit:'J/m',  color:'#a78bfa', decimals:1, yMin:0,   yMax:800,   help:'Driving efficiency averaged over 5-minute periods.' },
+  { field:'EfficiencyLap',       stage:'efficiency', label:'Efficiency per Lap',  unit:'J/m',  color:'#a78bfa', decimals:1, yMin:0,   yMax:800,   help:'Driving efficiency averaged over each lap (5.04 km).' },
+
+  // ── Localization ──
+  { field:'LapIndex',            stage:'localization', label:'Lap Index',         unit:'lap',  color:'#f472b6', decimals:0, yMin:0,   yMax:60,    help:'Best available lap index. Prefers spreadsheet > integrated speed.' },
+  { field:'TrackIndex',          stage:'localization', label:'Track Position',       unit:'',     color:'#f472b6', decimals:2, yMin:0,   yMax:1,     help:'Best available track position index.' },
+  { field:'TrackDistSpreadsheet',stage:'localization', label:'Lap Distance',    unit:'m',    color:'#f472b6', decimals:0, yMin:0,   yMax:5040,  help:'Distance along current lap from spreadsheet splits + integrated speed.' },
+
+  // ── Weather ──
+  { field:'AirTemperature',      stage:'weather',    label:'Air Temperature',     unit:'°C',   color:'#38bdf8', decimals:1, yMin:-10, yMax:45,    help:'Air temperature at 2 m above surface.' },
+  { field:'DHI',                 stage:'weather',    label:'Diffuse Irradiance',                 unit:'W/m²', color:'#38bdf8', decimals:0, yMin:0,   yMax:400,   help:'Diffuse Horizontal Irradiance — scattered sky radiation.' },
+  { field:'DNI',                 stage:'weather',    label:'Direct Irradiance',                 unit:'W/m²', color:'#38bdf8', decimals:0, yMin:0,   yMax:1000,  help:'Direct Normal Irradiance — beam radiation from sun direction.' },
+  { field:'GHI',                 stage:'weather',    label:'Total Irradiance',                 unit:'W/m²', color:'#38bdf8', decimals:0, yMin:0,   yMax:1200,  help:'Global Horizontal Irradiance — total surface irradiance.' },
+  { field:'PrecipitationRate',   stage:'weather',    label:'Precipitation',       unit:'mm/h', color:'#38bdf8', decimals:1, yMin:0,   yMax:50,    help:'Estimated average precipitation rate.' },
+  { field:'WindDirection',       stage:'weather',    label:'Wind Direction',      unit:'°',    color:'#38bdf8', decimals:0, yMin:0,   yMax:360,   help:'Wind direction at 10 m. 0=north, 270=west.' },
+  { field:'WindSpeed',           stage:'weather',    label:'Wind Speed',          unit:'m/s',  color:'#38bdf8', decimals:1, yMin:0,   yMax:20,    help:'Wind speed at 10 m above ground.' },
+  { field:'Zenith',              stage:'weather',    label:'Solar Zenith',        unit:'°',    color:'#38bdf8', decimals:0, yMin:0,   yMax:90,    help:'Angle between sun and zenith. 0=overhead, 90=horizon.' },
+
+  // ── SOC ──
+  { field:'SOC',                 stage:'soc',        label:'State of Charge',        unit:'',     color:'#c9a84c', decimals:3, yMin:0,   yMax:1,     help:'Thevenin + Extended Kalman Filter SOC. Uses voltage to correct for sensor drift.' },
+];
+
+// Backwards-compat alias for map color-by & calc engine
+const METRICS = SIGNALS;
+
+const MAX_MS  = 3600 * 1000;
+const history = {};
+const gpsHistory = [];
+const latest  = {};
+SIGNALS.forEach(m => { history[m.field] = []; latest[m.field] = { value:null, prev:null }; });
+// LapIndexSpreadsheet is used for lap resolution but isn't in SIGNALS
+history['LapIndexSpreadsheet'] = [];
+
+// ─── SIDEBAR BUILDER ─────────────────────────────────────────────────────────
+let activeFields = new Set();
+let activeField  = null;  // kept for map compat
+
+function buildSidebar() {
+  const scroll = document.getElementById('sidebarScroll');
+  scroll.innerHTML = '';
+
+  STAGES.forEach(stage => {
+    const signals = SIGNALS.filter(s => s.stage === stage.id);
+    if (!signals.length) return;
+
+    const group = document.createElement('div');
+    group.className = 'stage-group open';
+    group.dataset.stage = stage.id;
+
+    const header = document.createElement('div');
+    header.className = 'stage-header';
+    header.innerHTML = `
+      <div class="stage-dot" style="background:${stage.color}"></div>
+      <div class="stage-name">${stage.label}</div>
+      <div class="stage-count">${signals.length}</div>
+      <svg class="stage-chevron" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="4 2 8 6 4 10"/></svg>
+    `;
+    header.addEventListener('click', () => group.classList.toggle('open'));
+
+    const sigList = document.createElement('div');
+    sigList.className = 'stage-signals';
+
+    signals.forEach(sig => {
+      const row = document.createElement('div');
+      row.className = 'signal-row';
+      row.id = 'sigrow-' + sig.field;
+      row.style.setProperty('--stage-color', stage.color);
+      row.dataset.label = (sig.label + ' ' + sig.field + ' ' + sig.unit).toLowerCase();
+      row.innerHTML = `
+        <div class="sig-name" title="${sig.help}">${sig.label}</div>
+        <div class="sig-value" id="sigval-${sig.field}">—</div>
+        <div class="sig-unit">${sig.unit}</div>
+      `;
+      row.addEventListener('click', (e) => {
+        const multiSelect = e.ctrlKey || e.metaKey;
+        activateSignal(sig.field, multiSelect);
+      });
+      sigList.appendChild(row);
+    });
+
+    group.appendChild(header);
+    group.appendChild(sigList);
+    scroll.appendChild(group);
+  });
+}
+
+// ─── SIGNAL ACTIVATION ───────────────────────────────────────────────────────
+function activateSignal(field, multiSelect) {
+  const sig = SIGNALS.find(s => s.field === field);
+  if (!sig) return;
+
+  stopLoop();
+  clearMapPanel();
+  activeField = null;
+
+  if (multiSelect) {
+    if (activeFields.has(field)) activeFields.delete(field);
+    else if (activeFields.size < 3) activeFields.add(field);
+  } else {
+    if (activeFields.size === 1 && activeFields.has(field)) {
+      activeFields.clear();
+    } else {
+      activeFields.clear();
+      activeFields.add(field);
+    }
+  }
+
+  // Update row highlights
+  SIGNALS.forEach(s => {
+    const row = document.getElementById('sigrow-' + s.field);
+    if (row) row.classList.toggle('active', activeFields.has(s.field));
+  });
+
+  if (activeFields.size === 0) {
+    const area = document.getElementById('mainArea');
+    area.innerHTML = '<div class="plot-panel"><div class="plot-empty"><div class="plot-empty-hint">Select a signal from the sidebar</div><div class="plot-empty-sub">Hold Ctrl / ⌘ to overlay up to 3 signals</div></div></div>';
+    return;
+  }
+
+  let pp = document.getElementById('plotPanel');
+  const hasCanvas = pp && !!pp.querySelector('#plotCanvas');
+  if (!hasCanvas) {
+    const area = document.getElementById('mainArea');
+    area.innerHTML = '';
+    pp = document.createElement('div');
+    pp.id = 'plotPanel'; pp.className = 'plot-panel';
+    area.appendChild(pp);
+    buildChartPanel();
+  } else {
+    updateChartLegend();
+  }
+  if (staticMode) render(); else startLoop();
+}
+
+// ─── CHART PANEL ─────────────────────────────────────────────────────────────
+let windowSec = 60;
+let rafId = null;
+
+function buildChartPanel() {
+  const panel = document.getElementById('plotPanel');
+  panel.className = 'plot-panel';
+  const firstM = SIGNALS.find(x => activeFields.has(x.field));
+  const titleColor = firstM ? firstM.color : 'var(--text)';
+
+  panel.innerHTML = `
+    <div class="plot-toolbar" id="plotToolbar" style="--card-color:${titleColor}">
+      <div id="chartLegend" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1;min-width:0;"></div>
+
+      <div class="mode-toggle">
+        <button class="mode-btn ${!staticMode?'on':''}" id="btnLive" onclick="setMode('live')">⬤ Live</button>
+        <div class="mode-divider"></div>
+        <button class="mode-btn ${staticMode?'on':''}" id="btnStatic" onclick="setMode('static')">⬛ Static</button>
+      </div>
+
+      <div class="static-inputs ${staticMode?'':'hidden'}" id="staticInputs">
+        <span class="ts-label">From</span>
+        <span id="dtFrom" class="dt-picker"></span>
+        <span class="ts-label">To</span>
+        <span id="dtTo" class="dt-picker"></span>
+        <button class="ts-apply" onclick="applyStaticRange()">Apply</button>
+      </div>
+
+      <div class="static-inputs ${!staticMode?'':'hidden'}" id="liveInputs">
+        <div class="presets">
+          <button class="preset" onclick="setWin(30,this)">30s</button>
+          <button class="preset" onclick="setWin(60,this)">1m</button>
+          <button class="preset" onclick="setWin(300,this)">5m</button>
+          <button class="preset" onclick="setWin(600,this)">10m</button>
+        </div>
+        <div class="win-wrap">
+          <input class="win-num" id="winNum" type="number" min="5" max="3600" value="${windowSec}">
+          <span style="font-size:10px;font-weight:500;color:var(--muted)">s</span>
+        </div>
+      </div>
+
+      <span class="static-badge ${staticMode?'':'hidden'}" id="staticBadge">FROZEN</span>
+      <button class="export-btn" id="exportBtn" onclick="exportCSV()" ${staticMode?'':'disabled'} title="Export visible data to CSV">
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 1v7M3 5l3 3 3-3"/><path d="M1 9v1a1 1 0 001 1h8a1 1 0 001-1V9"/>
+        </svg>
+        Export CSV
+      </button>
+    </div>
+    <div id="signalDescBar" class="signal-desc-bar"></div>
+    <div class="canvas-wrap"><canvas id="plotCanvas"></canvas><canvas id="plotOverlay"></canvas><div id="plotTooltip" class="plot-tooltip"></div><div class="chart-hint">scroll to zoom · drag to pan · dbl-click to reset</div></div>
+  `;
+  const winNumEl = document.getElementById('winNum');
+  if (winNumEl) winNumEl.addEventListener('change', function() {
+    const v = parseInt(this.value);
+    if (v >= 5 && v <= 3600) { windowSec = v; document.querySelectorAll('.preset').forEach(b => b.classList.remove('on')); }
+  });
+  setWinHighlight(windowSec);
+  dtInit('dtFrom', null); dtInit('dtTo', null);
+  prefillStaticInputs();
+  updateChartLegend();
+  updateSignalDesc();
+  attachChartInteractions();
+}
+
+function updateChartLegend() {
+  const el = document.getElementById('chartLegend');
+  if (!el) return;
+  el.innerHTML = '';
+  SIGNALS.filter(m => activeFields.has(m.field)).forEach(m => {
+    const chip = document.createElement('div');
+    chip.style.cssText = `display:flex;align-items:center;gap:5px;cursor:pointer;padding:3px 8px 3px 6px;border-radius:4px;border:1px solid ${m.color}40;background:${m.color}10;transition:background .15s;`;
+    chip.title = 'Click to remove ' + m.label;
+    chip.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:${m.color};flex-shrink:0;"></span><span style="font-size:12px;font-weight:600;color:${m.color};white-space:nowrap;">${m.label}</span><span style="font-size:11px;color:var(--muted);margin-left:2px;">${m.unit}</span>`;
+    chip.addEventListener('mouseenter', () => chip.style.background = m.color + '20');
+    chip.addEventListener('mouseleave', () => chip.style.background = m.color + '10');
+    chip.addEventListener('click', () => activateSignal(m.field, true));
+    el.appendChild(chip);
+  });
+  if (activeFields.size < 3) {
+    const hint = document.createElement('span');
+    hint.style.cssText = 'font-size:11px;color:var(--muted);font-style:italic;';
+    hint.textContent = activeFields.size === 1 ? 'Ctrl+click to overlay up to 2 more signals' : 'Ctrl+click to overlay 1 more signal';
+    el.appendChild(hint);
+  }
+  updateSignalDesc();
+}
+
+function updateSignalDesc() {
+  const bar = document.getElementById('signalDescBar');
+  if (!bar) return;
+  const active = SIGNALS.filter(m => activeFields.has(m.field));
+  if (active.length === 0) { bar.innerHTML = ''; bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  bar.innerHTML = active.map(m => `
+    <div class="signal-desc-item">
+      <span class="signal-desc-dot" style="background:${m.color}"></span>
+      <span class="signal-desc-name" style="color:${m.color}">${m.label}</span>
+      <span class="signal-desc-sep">—</span>
+      <span class="signal-desc-text">${m.help}</span>
+    </div>
+  `).join('');
+}
+let staticMode = false, staticFrom = null, staticTo = null;
+
+function prefillStaticInputs() {
+  const now = Date.now();
+  dtSet('dtFrom', staticFrom || now - windowSec * 1000);
+  dtSet('dtTo',   staticTo   || now);
+}
+
+function setMode(mode) {
+  staticMode = (mode === 'static');
+  document.getElementById('btnLive')  ?.classList.toggle('on', !staticMode);
+  document.getElementById('btnStatic')?.classList.toggle('on',  staticMode);
+  document.getElementById('staticInputs')?.classList.toggle('hidden', !staticMode);
+  document.getElementById('liveInputs')  ?.classList.toggle('hidden',  staticMode);
+  document.getElementById('staticBadge') ?.classList.toggle('hidden', !staticMode);
+  if (staticMode) {
+    if (!staticFrom || !staticTo) { staticTo = Date.now(); staticFrom = staticTo - windowSec * 1000; }
+    prefillStaticInputs(); stopLoop(); render();
+    document.getElementById('exportBtn')?.removeAttribute('disabled');
+  } else {
+    staticFrom = null; staticTo = null; startLoop();
+    document.getElementById('exportBtn')?.setAttribute('disabled', '');
+  }
+}
+
+function applyStaticRange() {
+  const f = dtGet('dtFrom'), t = dtGet('dtTo');
+  if (!f || !t || f >= t) {
+    const flash = id => { const el = document.getElementById(id); if(el){el.style.borderColor='var(--red)'; setTimeout(()=>el.style.borderColor='',1200);} };
+    flash('dtFrom'); flash('dtTo'); return;
+  }
+  staticFrom = f; staticTo = t; stopLoop(); render();
+}
+
+function exportCSV() {
+  if (!staticFrom || !staticTo) return;
+  const fields = Array.from(activeFields);
+  const metrics = fields.map(f => SIGNALS.find(x => x.field === f)).filter(Boolean);
+  if (!metrics.length) return;
+
+  // Collect all timestamps across active signals in range, sorted
+  const allTs = new Set();
+  metrics.forEach(m => {
+    history[m.field].filter(p => p.t >= staticFrom && p.t <= staticTo).forEach(p => allTs.add(p.t));
+  });
+  const timestamps = Array.from(allTs).sort((a, b) => a - b);
+  if (!timestamps.length) return;
+
+  const t0 = timestamps[0];
+
+  // Header rows — row 1: column names, row 2: units
+  const nameHeader = ['timestamp_utc', 'elapsed_s', ...metrics.map(m => m.field)];
+  const unitHeader = ['ISO8601',        's',          ...metrics.map(m => m.unit || '')];
+
+  // Data rows
+  const rows = timestamps.map(t => {
+    const iso = new Date(t).toISOString(); // e.g. 2026-05-02T14:32:01.123Z
+    const elapsed = ((t - t0) / 1000).toFixed(3);
+    const vals = metrics.map(m => {
+      const p = history[m.field].find(x => x.t === t);
+      return p !== undefined ? p.v.toFixed(m.decimals <= 1 ? 1 : 3) : '';
+    });
+    return [iso, elapsed, ...vals];
+  });
+
+  const csv = [nameHeader, unitHeader, ...rows].map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const start = new Date(staticFrom).toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const end   = new Date(staticTo).toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.href = url; a.download = `telemetry_${start}_${end}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+
+let _renderState = null;
+
+// ─── CANVAS RENDERER ─────────────────────────────────────────────────────────
+function render() {
+  const canvas = document.getElementById('plotCanvas');
+  if (!canvas) return;
+  const fields = activeField ? [activeField] : Array.from(activeFields);
+  if (fields.length === 0) return;
+  const metrics = fields.map(f => SIGNALS.find(x => x.field === f)).filter(Boolean);
+  if (!metrics.length) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.offsetWidth, H = canvas.offsetHeight;
+  if (!W || !H) return;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr);
+
+  let tStart, tEnd, isStatic = staticMode && staticFrom && staticTo;
+  if (isStatic) { tStart = staticFrom; tEnd = staticTo; }
+  else { tEnd = Date.now(); tStart = tEnd - windowSec * 1000; }
+  const tSpan = tEnd - tStart || 1;
+
+  const Y_AXIS_W = 44;
+  const PAD = { t:12, b:24, l:Math.min(Y_AXIS_W * metrics.length, 140), r:12 };
+  const cX = PAD.l, cY = PAD.t, cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+  const GRID = '#ffffff0a', AXIS = '#ffffff18', LABEL = '#7a8fa3', FONT = '10px IBM Plex Mono,monospace';
+  ctx.clearRect(0, 0, W, H); ctx.font = FONT;
+
+  const seriesData = metrics.map(m => {
+    const pts = history[m.field].filter(d => d.t >= tStart && d.t <= tEnd);
+    let yMin = m.yMin, yMax = m.yMax;
+    if (pts.length > 1) {
+      const vs = pts.map(d => d.v), lo = Math.min(...vs), hi = Math.max(...vs);
+      const pad = (hi - lo) * .12 || .5;
+      const clo = Math.max(m.yMin, lo - pad), chi = Math.min(m.yMax, hi + pad);
+      if (clo < chi) { yMin = clo; yMax = chi; }
+    }
+    return { m, pts, yMin, yMax, yRange: (yMax - yMin) || 1 };
+  });
+
+  const toX = t => cX + ((t - tStart) / tSpan) * cW;
+
+  for (let i = 0; i <= 5; i++) {
+    const y = cY + cH - (i / 5) * cH;
+    ctx.strokeStyle = GRID; ctx.lineWidth = .5;
+    ctx.beginPath(); ctx.moveTo(cX, y); ctx.lineTo(cX + cW, y); ctx.stroke();
+  }
+
+  seriesData.forEach((s, idx) => {
+    const axX = PAD.l - Y_AXIS_W * (idx + 1);
+    const toY = v => cY + cH - ((v - s.yMin) / s.yRange) * cH;
+    ctx.font = FONT;
+    for (let i = 0; i <= 5; i++) {
+      const v = s.yMin + (s.yRange / 5) * i;
+      ctx.fillStyle = s.m.color + 'cc'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      ctx.fillText(v.toFixed(s.m.decimals <= 1 ? 1 : 2), axX + Y_AXIS_W - 4, cY + cH - (i/5)*cH);
+    }
+    ctx.strokeStyle = s.m.color + '60'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(axX + Y_AXIS_W, cY); ctx.lineTo(axX + Y_AXIS_W, cY + cH); ctx.stroke();
+    ctx.save(); ctx.font = '9px IBM Plex Mono,monospace'; ctx.fillStyle = s.m.color + '99';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.translate(axX + 7, cY + cH / 2); ctx.rotate(-Math.PI / 2);
+    ctx.fillText(s.m.unit, 0, 0); ctx.restore();
+  });
+
+  const xN = Math.max(2, Math.min(8, Math.floor(cW / 90)));
+  ctx.font = FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let i = 0; i <= xN; i++) {
+    const t = tStart + (i / xN) * tSpan, x = toX(t);
+    let label;
+    if (isStatic) {
+      const d = new Date(t);
+      label = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+    } else {
+      const s = Math.round((tEnd - t) / 1000);
+      label = s === 0 ? 'now' : `-${s}s`;
+    }
+    ctx.fillStyle = LABEL; ctx.fillText(label, x, cY + cH + 6);
+    ctx.strokeStyle = AXIS; ctx.lineWidth = .5;
+    ctx.beginPath(); ctx.moveTo(x, cY + cH); ctx.lineTo(x, cY + cH + 3); ctx.stroke();
+  }
+
+  ctx.strokeStyle = AXIS; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cX, cY); ctx.lineTo(cX, cY + cH); ctx.lineTo(cX + cW, cY + cH); ctx.stroke();
+
+  seriesData.forEach(s => {
+    const { m, pts, yMin, yRange } = s;
+    const toY = v => cY + cH - ((v - yMin) / yRange) * cH;
+    if (pts.length < 2) {
+      if (seriesData.length === 1) {
+        ctx.fillStyle = LABEL; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = '11px IBM Plex Mono,monospace';
+        ctx.fillText(isStatic ? 'No data in selected range' : 'Waiting for data…', cX + cW / 2, cY + cH / 2);
+      }
+      return;
+    }
+    ctx.save(); ctx.beginPath(); ctx.rect(cX, cY, cW, cH); ctx.clip();
+    if (yMin < 0 && (yMin + yRange) > 0) {
+      const z = toY(0);
+      ctx.strokeStyle = m.color + '30'; ctx.lineWidth = 1; ctx.setLineDash([4, 5]);
+      ctx.beginPath(); ctx.moveTo(cX, z); ctx.lineTo(cX + cW, z); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.beginPath(); ctx.moveTo(toX(pts[0].t), toY(pts[0].v));
+    pts.slice(1).forEach(p => ctx.lineTo(toX(p.t), toY(p.v)));
+    ctx.lineTo(toX(pts[pts.length-1].t), cY + cH); ctx.lineTo(toX(pts[0].t), cY + cH);
+    ctx.closePath();
+    ctx.fillStyle = m.color + (seriesData.length > 1 ? '08' : '14'); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(toX(pts[0].t), toY(pts[0].v));
+    pts.slice(1).forEach(p => ctx.lineTo(toX(p.t), toY(p.v)));
+    ctx.strokeStyle = m.color; ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
+    if (!isStatic) {
+      const lp = pts[pts.length-1];
+      ctx.beginPath(); ctx.arc(toX(lp.t), toY(lp.v), 3.5, 0, Math.PI*2);
+      ctx.fillStyle = m.color; ctx.fill();
+      ctx.strokeStyle = '#0d1b2a'; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+    ctx.restore();
+  });
+
+  // Cache state for tooltip
+  _renderState = { tStart, tEnd, tSpan, cX, cY, cW, cH, seriesData, isStatic };
+}
+
+// ─── CHART INTERACTIONS (pan & zoom) ─────────────────────────────────────────
+function attachChartInteractions() {
+  const canvas = document.getElementById('plotCanvas');
+  if (!canvas) return;
+
+  // Helpers to get/set the current view window as absolute timestamps
+  function getWindow() {
+    if (staticMode && staticFrom && staticTo) return { f: staticFrom, t: staticTo };
+    const t = Date.now();
+    return { f: t - windowSec * 1000, t };
+  }
+
+  function setWindow(f, t) {
+    const minSpan = 5000;       // 5 s minimum
+    const maxSpan = MAX_MS;     // 1 hr maximum
+    let span = t - f;
+    if (span < minSpan) { const mid = (f + t) / 2; f = mid - minSpan / 2; t = mid + minSpan / 2; span = minSpan; }
+    if (span > maxSpan) { const mid = (f + t) / 2; f = mid - maxSpan / 2; t = mid + maxSpan / 2; }
+    // Clamp to available data
+    const dataEnd = Date.now();
+    if (t > dataEnd) { f -= (t - dataEnd); t = dataEnd; }
+    staticFrom = f; staticTo = t;
+    if (!staticMode) {
+      staticMode = true;
+      document.getElementById('btnLive')  ?.classList.remove('on');
+      document.getElementById('btnStatic')?.classList.add('on');
+      document.getElementById('staticInputs')?.classList.remove('hidden');
+      document.getElementById('liveInputs')  ?.classList.add('hidden');
+      document.getElementById('staticBadge') ?.classList.remove('hidden');
+      stopLoop();
+    }
+    prefillStaticInputs();
+    render();
+  }
+
+  // ── Wheel zoom ──────────────────────────────────────────────────────────────
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const PAD_L = Math.min(44 * Math.max(activeFields.size, 1), 140);
+    const cW = rect.width - PAD_L - 12;
+    const mouseX = e.clientX - rect.left - PAD_L;
+    const frac = Math.max(0, Math.min(1, mouseX / cW)); // 0=left edge, 1=right edge
+
+    const { f, t } = getWindow();
+    const span = t - f;
+    const factor = e.deltaY > 0 ? 1.04 : 0.96; // scroll down = zoom out
+    const newSpan = Math.max(5000, Math.min(MAX_MS, span * factor));
+    const pivot = f + frac * span; // keep time under cursor fixed
+    setWindow(pivot - frac * newSpan, pivot + (1 - frac) * newSpan);
+  }, { passive: false });
+
+  // ── Mouse pan ───────────────────────────────────────────────────────────────
+  let dragStartX = null, dragStartWindow = null;
+
+  canvas.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    dragStartX = e.clientX;
+    dragStartWindow = getWindow();
+    canvas.classList.add('panning');
+  });
+
+  window.addEventListener('mousemove', e => {
+    if (dragStartX === null) return;
+    const rect = canvas.getBoundingClientRect();
+    const PAD_L = Math.min(44 * Math.max(activeFields.size, 1), 140);
+    const cW = rect.width - PAD_L - 12;
+    if (cW <= 0) return;
+    const dx = e.clientX - dragStartX;
+    const { f, t } = dragStartWindow;
+    const span = t - f;
+    const shift = -(dx / cW) * span * 0.3;
+    setWindow(f + shift, t + shift);
+  });
+
+  window.addEventListener('mouseup', () => {
+    dragStartX = null; dragStartWindow = null;
+    canvas.classList.remove('panning');
+  });
+
+  // ── Double-click: reset to live ─────────────────────────────────────────────
+  canvas.addEventListener('dblclick', () => {
+    staticFrom = null; staticTo = null;
+    setMode('live');
+  });
+
+  // ── Touch: pinch-zoom + single-finger pan ───────────────────────────────────
+  let lastTouches = null;
+
+  canvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    lastTouches = Array.from(e.touches).map(t => ({ x: t.clientX, y: t.clientY }));
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    const touches = Array.from(e.touches).map(t => ({ x: t.clientX, y: t.clientY }));
+    if (!lastTouches || touches.length !== lastTouches.length) { lastTouches = touches; return; }
+
+    const rect = canvas.getBoundingClientRect();
+    const PAD_L = Math.min(44 * Math.max(activeFields.size, 1), 140);
+    const cW = rect.width - PAD_L - 12;
+    const { f, t } = getWindow();
+    const span = t - f;
+
+    if (touches.length === 1) {
+      // Pan
+      const dx = touches[0].x - lastTouches[0].x;
+      const shift = -(dx / cW) * span * 0.3;
+      setWindow(f + shift, t + shift);
+    } else if (touches.length === 2) {
+      // Pinch zoom
+      const prevDist = Math.abs(lastTouches[1].x - lastTouches[0].x);
+      const currDist = Math.abs(touches[1].x - touches[0].x);
+      if (prevDist === 0) { lastTouches = touches; return; }
+      const scale = prevDist / currDist; // fingers spreading = zoom in = scale < 1 → smaller span
+      const midX = ((touches[0].x + touches[1].x) / 2) - rect.left - PAD_L;
+      const frac = Math.max(0, Math.min(1, midX / cW));
+      const newSpan = Math.max(5000, Math.min(MAX_MS, span * scale));
+      const pivot = f + frac * span;
+      setWindow(pivot - frac * newSpan, pivot + (1 - frac) * newSpan);
+    }
+    lastTouches = touches;
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', () => { lastTouches = null; });
+
+  // ── Tooltip crosshair ────────────────────────────────────────────────────────
+  const overlay = document.getElementById('plotOverlay');
+  const tooltip = document.getElementById('plotTooltip');
+
+  function syncOverlaySize() {
+    if (!overlay) return;
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.offsetWidth, H = canvas.offsetHeight;
+    overlay.width = W * dpr; overlay.height = H * dpr;
+    overlay.style.width = W + 'px'; overlay.style.height = H + 'px';
+  }
+
+  function drawCrosshair(mouseX, mouseY) {
+    if (!overlay || !_renderState) return;
+    const { tStart, tSpan, cX, cY, cW, cH, seriesData } = _renderState;
+    const dpr = window.devicePixelRatio || 1;
+    syncOverlaySize();
+    const ctx2 = overlay.getContext('2d');
+    ctx2.clearRect(0, 0, overlay.width, overlay.height);
+
+    // Only show inside chart area
+    if (mouseX < cX || mouseX > cX + cW || mouseY < cY || mouseY > cY + cH) {
+      if (tooltip) tooltip.style.display = 'none';
+      return;
+    }
+
+    // Time at cursor
+    const tCursor = tStart + ((mouseX - cX) / cW) * tSpan;
+
+    // Vertical crosshair line
+    ctx2.save(); ctx2.scale(dpr, dpr);
+    ctx2.strokeStyle = '#ffffff18'; ctx2.lineWidth = 1; ctx2.setLineDash([4, 4]);
+    ctx2.beginPath(); ctx2.moveTo(mouseX, cY); ctx2.lineTo(mouseX, cY + cH); ctx2.stroke();
+    ctx2.setLineDash([]);
+
+    // For each series, find nearest point and draw dot
+    const rows = seriesData.map(s => {
+      const { m, pts, yMin, yRange } = s;
+      if (!pts.length) return null;
+      // Binary search nearest point by time
+      let lo = 0, hi = pts.length - 1;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (pts[mid].t < tCursor) lo = mid + 1; else hi = mid; }
+      // Pick closer of lo and lo-1
+      const p = (lo > 0 && Math.abs(pts[lo-1].t - tCursor) < Math.abs(pts[lo].t - tCursor)) ? pts[lo-1] : pts[lo];
+      const toY = v => cY + cH - ((v - yMin) / yRange) * cH;
+      const px = cX + ((p.t - tStart) / tSpan) * cW;
+      const py = toY(p.v);
+      // Glow
+      ctx2.beginPath(); ctx2.arc(px, py, 7, 0, Math.PI * 2);
+      ctx2.fillStyle = m.color + '22'; ctx2.fill();
+      // Dot
+      ctx2.beginPath(); ctx2.arc(px, py, 3.5, 0, Math.PI * 2);
+      ctx2.fillStyle = m.color; ctx2.fill();
+      ctx2.strokeStyle = '#0d1b2a'; ctx2.lineWidth = 1.5; ctx2.stroke();
+      return { m, p };
+    }).filter(Boolean);
+    ctx2.restore();
+
+    // Tooltip content
+    if (!tooltip || !rows.length) return;
+    const d = new Date(rows[0].p.t);
+    const timeStr = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+    tooltip.innerHTML = `<div class="plot-tooltip-time">${timeStr}</div>` + rows.map(r =>
+      `<div class="plot-tooltip-row">
+        <span class="plot-tooltip-dot" style="background:${r.m.color}"></span>
+        <span class="plot-tooltip-label">${r.m.label}</span>
+        <span class="plot-tooltip-val" style="color:${r.m.color}">${r.p.v.toFixed(r.m.decimals <= 1 ? 1 : 2)}<span style="font-size:9px;color:var(--muted);margin-left:3px">${r.m.unit}</span></span>
+      </div>`
+    ).join('');
+
+    // Position tooltip — keep it inside the canvas-wrap
+    const wrap = canvas.parentElement;
+    const wRect = wrap.getBoundingClientRect();
+    const cRect = canvas.getBoundingClientRect();
+    const relX = mouseX + (cRect.left - wRect.left);
+    const relY = mouseY + (cRect.top  - wRect.top);
+    const ttW = 180, ttH = 28 + rows.length * 26;
+    const left = relX + 14 + ttW > wRect.width  ? relX - ttW - 10 : relX + 14;
+    const top  = relY - ttH / 2 < 0 ? 4 : relY + ttH / 2 > wRect.height ? wRect.height - ttH - 4 : relY - ttH / 2;
+    tooltip.style.left = left + 'px';
+    tooltip.style.top  = top  + 'px';
+    tooltip.style.display = 'block';
+  }
+
+  canvas.addEventListener('mousemove', e => {
+    if (dragStartX !== null) return; // don't show tooltip while panning
+    const rect = canvas.getBoundingClientRect();
+    drawCrosshair(e.clientX - rect.left, e.clientY - rect.top);
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    if (overlay) { const ctx2 = overlay.getContext('2d'); ctx2.clearRect(0, 0, overlay.width, overlay.height); }
+    if (tooltip) tooltip.style.display = 'none';
+  });
+}
+
+
+function loop()      { render(); rafId = requestAnimationFrame(loop); }
+function startLoop() { if (!rafId) rafId = requestAnimationFrame(loop); }
+function stopLoop()  { if (rafId) { cancelAnimationFrame(rafId); rafId = null; } }
+
+function setWin(sec, btn) {
+  windowSec = sec;
+  document.querySelectorAll('.preset').forEach(b => b.classList.remove('on'));
+  if (btn) btn.classList.add('on');
+  const wi = document.getElementById('winNum'); if (wi) wi.value = sec;
+}
+
+function setWinHighlight(sec) {
+  const map = { 30:'30s', 60:'1m', 300:'5m', 600:'10m' };
+  document.querySelectorAll('.preset').forEach(b => b.classList.toggle('on', b.textContent === map[sec]));
+}
+
+// ─── MAP PANEL ───────────────────────────────────────────────────────────────
+let leafletMap = null, mapPolylines = [], replayMarker = null;
+let replayTimer = null, replayIdx = 0, isPlaying = false;
+let colorByField = 'VehicleVelocity', mapRangeStart = 0, mapRangeEnd = 1, mapFitted = false;
+
+function clearMapPanel() {
+  stopReplay();
+  if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+  mapPolylines = []; replayMarker = null; mapFitted = false;
+}
+
+function activateMap() {
+  stopLoop(); clearMapPanel();
+  activeField = null; activeFields.clear();
+  SIGNALS.forEach(s => { const r = document.getElementById('sigrow-' + s.field); if(r) r.classList.remove('active'); });
+
+  const area = document.getElementById('mainArea');
+  area.innerHTML = '';
+  const panel = document.createElement('div');
+  panel.className = 'map-panel';
+  area.appendChild(panel);
+
+  const metricOpts = SIGNALS.map(m =>
+    `<option value="${m.field}" ${m.field === colorByField ? 'selected' : ''}>${m.label}</option>`
+  ).join('');
+
+  panel.innerHTML = `
+    <div class="map-toolbar">
+      <div class="map-toolbar-row1">
+        <span class="plot-name">GPS Track</span>
+        <div class="color-by">
+          <span class="color-by-label">Color by</span>
+          <select id="colorBySelect" onchange="setColorBy(this.value)">${metricOpts}</select>
+        </div>
+        <div class="map-legend">
+          <span class="legend-lo" id="legendLo">low</span>
+          <div class="legend-grad"></div>
+          <span class="legend-hi" id="legendHi">high</span>
+        </div>
+      </div>
+      <div class="map-toolbar-row2">
+        <div class="scrubber-wrap">
+          <span class="scrubber-label">Start</span>
+          <span id="dtMapStart" class="dt-picker"></span>
+          <input type="range" id="scrubStart" min="0" max="1000" value="0" step="1" oninput="onScrub('start')">
+        </div>
+        <div class="scrubber-wrap">
+          <span class="scrubber-label">End</span>
+          <span id="dtMapEnd" class="dt-picker"></span>
+          <input type="range" id="scrubEnd" min="0" max="1000" value="1000" step="1" oninput="onScrub('end')">
+        </div>
+        <button class="replay-btn" id="replayBtn" onclick="toggleReplay()">▶ Replay</button>
+        <div class="speed-wrap">
+          <span class="speed-label">Speed</span>
+          <select class="speed-select" id="replaySpeed">
+            <option value="1">1×</option><option value="5">5×</option>
+            <option value="10" selected>10×</option><option value="30">30×</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="map-wrap"><div id="leafletMap"></div></div>
+  `;
+
+  leafletMap = L.map('leafletMap', { zoomControl:true, attributionControl:true });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution:'© OpenStreetMap contributors', maxZoom:19,
+  }).addTo(leafletMap);
+
+  dtInit('dtMapStart', () => onMapPickerChange('start'));
+  dtInit('dtMapEnd',   () => onMapPickerChange('end'));
+  drawMapTrace(); syncTimeInputs();
+}
+
+function metricToColor(norm) {
+  const r = norm < .5 ? Math.round(76 + (201-76)*norm*2) : Math.round(201+(224-201)*(norm-.5)*2);
+  const g = norm < .5 ? Math.round(175+(168-175)*norm*2) : Math.round(168+(92-168)*(norm-.5)*2);
+  const b = norm < .5 ? Math.round(61+(76-61)*norm*2)    : Math.round(76+(74-76)*(norm-.5)*2);
+  return `rgb(${r},${g},${b})`;
+}
+
+function drawMapTrace() {
+  if (!leafletMap) return;
+  mapPolylines.forEach(p => p.remove()); mapPolylines = [];
+  if (replayMarker) { replayMarker.remove(); replayMarker = null; }
+  const n = gpsHistory.length;
+  if (n < 1) return;
+  if (n < 2) { leafletMap.setView([gpsHistory[0].lat, gpsHistory[0].lon], 15); return; }
+
+  const iStart = Math.floor(mapRangeStart * (n - 1));
+  const iEnd   = Math.ceil(mapRangeEnd * (n - 1));
+  const pts    = gpsHistory.slice(iStart, iEnd + 1);
+  if (pts.length < 2) return;
+
+  const mDef = SIGNALS.find(x => x.field === colorByField);
+  const mHist = history[colorByField];
+  let allVals = [];
+  pts.forEach(p => { const v = nearestMetric(mHist, p.t); if (v !== null) allVals.push(v); });
+  const vMin = allVals.length ? Math.min(...allVals) : 0;
+  const vMax = allVals.length ? Math.max(...allVals) : 1;
+  const vRange = vMax - vMin || 1;
+
+  const legendLo = document.getElementById('legendLo');
+  const legendHi = document.getElementById('legendHi');
+  if (legendLo) legendLo.textContent = vMin.toFixed(mDef ? mDef.decimals : 1) + (mDef ? ' ' + mDef.unit : '');
+  if (legendHi) legendHi.textContent = vMax.toFixed(mDef ? mDef.decimals : 1) + (mDef ? ' ' + mDef.unit : '');
+
+  for (let i = 0; i < pts.length; i++) {
+    const v = nearestMetric(mHist, pts[i].t);
+    const norm = v !== null ? (v - vMin) / vRange : 0.5;
+    const col = metricToColor(norm);
+    const dot = L.circleMarker([pts[i].lat, pts[i].lon], {
+      radius: 3, color: col, fillColor: col, fillOpacity: 0.9, weight: 0
+    }).addTo(leafletMap);
+    mapPolylines.push(dot);
+  }
+  if (!mapFitted) {
+    leafletMap.fitBounds(L.latLngBounds(pts.map(p => [p.lat, p.lon])), { padding:[24,24] });
+    mapFitted = true;
+  }
+  updateScrubInfo(iStart, iEnd, n);
+}
+
+function nearestMetric(hist, t) {
+  if (!hist || !hist.length) return null;
+  let lo = 0, hi = hist.length - 1;
+  while (lo < hi) { const mid = (lo+hi)>>1; if (hist[mid].t < t) lo = mid+1; else hi = mid; }
+  return hist[lo] ? hist[lo].v : null;
+}
+
+function setColorBy(field) { colorByField = field; drawMapTrace(); }
+
+function onScrub(which) {
+  const sEl = document.getElementById('scrubStart'), eEl = document.getElementById('scrubEnd');
+  let s = parseInt(sEl.value), e = parseInt(eEl.value);
+  if (s > e) { if (which === 'start') { sEl.value = e; s = e; } else { eEl.value = s; e = s; } }
+  mapRangeStart = s / 1000; mapRangeEnd = e / 1000;
+  syncTimeInputs(); stopReplay(); drawMapTrace();
+}
+
+function onMapPickerChange(which) {
+  const n = gpsHistory.length; if (n < 2) return;
+  const tFirst = gpsHistory[0].t, tLast = gpsHistory[n-1].t, tSpan = tLast - tFirst || 1;
+  if (which === 'start') {
+    const t = dtGet('dtMapStart'); if (!t) return;
+    mapRangeStart = Math.max(0, Math.min(1, (t - tFirst) / tSpan));
+    if (mapRangeStart >= mapRangeEnd) mapRangeStart = Math.max(0, mapRangeEnd - 0.001);
+    document.getElementById('scrubStart').value = Math.round(mapRangeStart * 1000);
+  } else {
+    const t = dtGet('dtMapEnd'); if (!t) return;
+    mapRangeEnd = Math.max(0, Math.min(1, (t - tFirst) / tSpan));
+    if (mapRangeEnd <= mapRangeStart) mapRangeEnd = Math.min(1, mapRangeStart + 0.001);
+    document.getElementById('scrubEnd').value = Math.round(mapRangeEnd * 1000);
+  }
+  stopReplay(); drawMapTrace();
+}
+
+function syncTimeInputs() {
+  const n = gpsHistory.length; if (n < 2) return;
+  const tFirst = gpsHistory[0].t, tLast = gpsHistory[n-1].t;
+  const tSpan = tLast - tFirst || 1;
+  dtSet('dtMapStart', tFirst + mapRangeStart * tSpan);
+  dtSet('dtMapEnd',   tFirst + mapRangeEnd   * tSpan);
+}
+
+function updateScrubInfo(iStart, iEnd, n) {
+  const tFirst = gpsHistory[0]?.t, tLast = gpsHistory[n-1]?.t;
+  if (!tFirst || !tLast) return;
+  syncTimeInputs();
+}
+
+function toggleReplay() {
+  const btn = document.getElementById('replayBtn');
+  if (isPlaying) { stopReplay(); return; }
+  isPlaying = true; btn?.classList.add('playing');
+  if (btn) btn.textContent = '⏹ Stop';
+  const n = gpsHistory.length;
+  const iStart = Math.floor(mapRangeStart*(n-1)), iEnd = Math.ceil(mapRangeEnd*(n-1));
+  const pts = gpsHistory.slice(iStart, iEnd+1);
+  if (pts.length < 2) { stopReplay(); return; }
+  replayIdx = 0;
+  if (replayMarker) replayMarker.remove();
+  const carIcon = L.divIcon({ className:'', html:`<div style="width:12px;height:12px;border-radius:50%;background:#c9a84c;border:2px solid #fff;box-shadow:0 0 6px #c9a84c88;"></div>`, iconSize:[12,12], iconAnchor:[6,6] });
+  replayMarker = L.marker([pts[0].lat,pts[0].lon],{icon:carIcon,zIndexOffset:1000}).addTo(leafletMap);
+  function step() {
+    if (!isPlaying) return;
+    replayIdx++;
+    if (replayIdx >= pts.length) { stopReplay(); return; }
+    replayMarker.setLatLng([pts[replayIdx].lat,pts[replayIdx].lon]);
+    const speedMul = 10;
+    const dtReal = replayIdx < pts.length-1 ? pts[replayIdx+1].t - pts[replayIdx].t : 500;
+    replayTimer = setTimeout(step, Math.max(16, dtReal/speedMul));
+  }
+  replayTimer = setTimeout(step, 100);
+}
+
+function stopReplay() {
+  isPlaying = false; clearTimeout(replayTimer); replayTimer = null;
+  const btn = document.getElementById('replayBtn');
+  if (btn) { btn.classList.remove('playing'); btn.textContent = '▶ Replay'; }
+}
+
+// ─── DATA PIPELINE ───────────────────────────────────────────────────────────
+function push(field, t, raw) {
+  const m = SIGNALS.find(x => x.field === field);
+  if (!m) return;
+  const v = m.transform ? m.transform(raw) : raw;
+  const h = history[field];
+  h.push({ t, v });
+  const cut = Date.now() - MAX_MS;
+  while (h.length && h[0].t < cut) h.shift();
+
+  const lat_ = latest[field];
+  lat_.prev = lat_.value; lat_.value = v;
+
+  // Sidebar live value
+  const valEl = document.getElementById('sigval-' + field);
+  if (valEl) valEl.textContent = v.toFixed(m.decimals);
+
+  // Vitals strip
+  if (field === 'TotalPackVoltage') { const el = document.getElementById('vital-voltage'); if(el) el.firstChild.textContent = v.toFixed(1); }
+  if (field === 'SOC')              { const el = document.getElementById('vital-soc');     if(el) el.firstChild.textContent = (v*100).toFixed(1); }
+  if (field === 'VehicleVelocity') { const el = document.getElementById('vital-speed');   if(el) el.firstChild.textContent = v.toFixed(1); }
+  if (field === 'PackPower')        { const el = document.getElementById('vital-power');   if(el) el.firstChild.textContent = v.toFixed(0); }
+}
+
+const GPS_TELEPORT_THRESHOLD_M = 1000;
+
+function haversineMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = x => x * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function pushGPS(t, lat, lon) {
+  const prev = gpsHistory[gpsHistory.length - 1];
+  if (prev && haversineMeters(prev.lat, prev.lon, lat, lon) > GPS_TELEPORT_THRESHOLD_M) {
+    // Car teleported — wipe history and start fresh from new position
+    gpsHistory.length = 0;
+    mapFitted = false;
+  }
+  gpsHistory.push({ t, lat, lon });
+  const cut = Date.now() - MAX_MS;
+  while (gpsHistory.length && gpsHistory[0].t < cut) gpsHistory.shift();
+  const dEl = document.getElementById('mapGpsSub');
+  if (dEl) dEl.textContent = gpsHistory.length + ' pts';
+  if (leafletMap && gpsHistory.length >= 2 && !isPlaying) {
+    const n = gpsHistory.length, i = n-2;
+    const iS = Math.floor(mapRangeStart*(n-1)), iE = Math.ceil(mapRangeEnd*(n-1));
+    if (i >= iS && i < iE && n % 5 === 0) drawMapTrace();
+  }
+}
+
+function ingest(data) {
+  const now = Date.now();
+  SIGNALS.forEach(m => { if (data[m.field] !== undefined) push(m.field, now, data[m.field]); });
+  if (data.LapIndexSpreadsheet !== undefined) {
+    history['LapIndexSpreadsheet'].push({ t: now, v: data.LapIndexSpreadsheet });
+    const cut = now - MAX_MS;
+    while (history['LapIndexSpreadsheet'].length && history['LapIndexSpreadsheet'][0].t < cut) history['LapIndexSpreadsheet'].shift();
+  }
+  if (data.lat !== undefined && data.lon !== undefined) pushGPS(data.timestamp || now, data.lat, data.lon);
+}
+
+// ─── SIGNAL SEARCH ───────────────────────────────────────────────────────────
+function filterSignals(q) {
+  const query = q.trim().toLowerCase();
+  const scroll = document.getElementById('sidebarScroll');
+  scroll.querySelectorAll('.signal-row').forEach(row => {
+    const match = !query || row.dataset.label.includes(query);
+    row.classList.toggle('hidden-search', !match);
+  });
+  // collapse/expand stage groups based on visible signals
+  scroll.querySelectorAll('.stage-group').forEach(group => {
+    const visible = group.querySelectorAll('.signal-row:not(.hidden-search)').length;
+    if (query) {
+      group.classList.toggle('open', visible > 0);
+    }
+  });
+}
+
+// ─── SIDEBAR TOGGLE ──────────────────────────────────────────────────────────
+let sidebarOpen = true;
+function toggleSidebar() {
+  sidebarOpen = !sidebarOpen;
+  const sidebar = document.getElementById('sidebar');
+  const layout  = document.getElementById('bodyLayout');
+  const icon    = document.getElementById('sidebarToggleIcon');
+  const toggle  = document.getElementById('sidebarToggle');
+
+  sidebar.classList.toggle('collapsed', !sidebarOpen);
+  layout.classList.toggle('sidebar-collapsed', !sidebarOpen);
+
+  const left = sidebarOpen ? 'calc(var(--sidebar-w) - 1px)' : '0px';
+  toggle.style.left = left;
+  icon.innerHTML = sidebarOpen
+    ? '<polyline points="6 2 3 5 6 8"/>'
+    : '<polyline points="4 2 7 5 4 8"/>';
+
+  setTimeout(() => {
+    if (leafletMap) leafletMap.invalidateSize();
+    const canvas = document.getElementById('plotCanvas');
+    if (canvas && (activeFields.size > 0 || activeField)) render();
+  }, 260);
+}
+
+// ─── DUMMY DATA ───────────────────────────────────────────────────────────────
+const WAYPOINTS = [
+    [ 37.0011529 , -86.36837867],[ 37.00122817, -86.3682181 ],[ 37.00133071, -86.36801267],
+    [ 37.00143614, -86.36779264],[ 37.00152389, -86.3675912 ],[ 37.00160574, -86.36740819],
+    [ 37.00167596, -86.36725066],[ 37.00175285, -86.36709064],[ 37.00183166, -86.36691875],
+    [ 37.00192538, -86.36670617],[ 37.00200136, -86.36653034],[ 37.00208623, -86.36635086],
+    [ 37.00215644, -86.36619701],[ 37.00222549, -86.36603626],[ 37.00229839, -86.3658645 ],
+    [ 37.00237732, -86.36569622],[ 37.00245038, -86.36553914],[ 37.00252912, -86.36537128],
+    [ 37.00259904, -86.36521818],[ 37.00266755, -86.36507091],[ 37.00274639, -86.36490341],
+    [ 37.00283342, -86.36471029],[ 37.00291248, -86.36454704],[ 37.00298517, -86.36439075],
+    [ 37.0030636 , -86.36423803],[ 37.00313338, -86.36408574],[ 37.00320937, -86.36393701],
+    [ 37.00330797, -86.36377724],[ 37.00343811, -86.36368662],[ 37.00357758, -86.36365019],
+    [ 37.00372489, -86.36360692],[ 37.00388711, -86.36356354],[ 37.00405472, -86.36352621],
+    [ 37.00423763, -86.36348621],[ 37.00437129, -86.36338074],[ 37.00448184, -86.36323899],
+    [ 37.00457515, -86.36307953],[ 37.0047012 , -86.36286956],[ 37.00486024, -86.36273924],
+    [ 37.00505061, -86.36270756],[ 37.00527945, -86.36272947],[ 37.00548802, -86.36263566],
+    [ 37.00565341, -86.36245496],[ 37.00573513, -86.3621647 ],[ 37.00568611, -86.36182869],
+    [ 37.00548782, -86.36157939],[ 37.0052881 , -86.36149696],[ 37.00511652, -86.36149669],
+    [ 37.0049746 , -86.36158761],[ 37.00485989, -86.3616726 ],[ 37.00469955, -86.3617696 ],
+    [ 37.00451492, -86.36178471],[ 37.00435852, -86.36173599],[ 37.00419576, -86.36162316],
+    [ 37.00409127, -86.36146652],[ 37.00404463, -86.3612301 ],[ 37.00407232, -86.36097832],
+    [ 37.00415922, -86.36078578],[ 37.00426711, -86.36066944],[ 37.00439509, -86.36060407],
+    [ 37.00452844, -86.36057503],[ 37.00466778, -86.36054604],[ 37.004833  , -86.36050987],
+    [ 37.00499495, -86.36047743],[ 37.00514229, -86.36044484],[ 37.00524902, -86.36041601],
+    [ 37.00541074, -86.36037856],[ 37.00558676, -86.36034575],[ 37.00578957, -86.36038183],
+    [ 37.00596102, -86.36045445],[ 37.00607154, -86.36065091],[ 37.0061651 , -86.36090615],
+    [ 37.00626234, -86.3611639 ],[ 37.00637312, -86.36147776],[ 37.00642557, -86.36179897],
+    [ 37.00644459, -86.36216748],[ 37.00637929, -86.36250433],[ 37.00629836, -86.36273906],
+    [ 37.00622229, -86.36291634],[ 37.00611158, -86.36309997],[ 37.00600738, -86.36323379],
+    [ 37.00589169, -86.3633461 ],[ 37.00576471, -86.36344689],[ 37.00564905, -86.36353398],
+    [ 37.00551878, -86.36359932],[ 37.00537978, -86.36365448],[ 37.00525188, -86.36370605],
+    [ 37.0051236 , -86.36376501],[ 37.00497727, -86.36382802],[ 37.00484855, -86.36391978],
+    [ 37.00471266, -86.36403361],[ 37.0045783 , -86.36422396],[ 37.00447907, -86.36439954],
+    [ 37.00435695, -86.36453807],[ 37.00424813, -86.36465022],[ 37.00411061, -86.36480228],
+    [ 37.00397977, -86.36492984],[ 37.0038682 , -86.36504946],[ 37.00376295, -86.36516126],
+    [ 37.00365436, -86.36527329],[ 37.00354759, -86.36539144],[ 37.00341675, -86.36552332],
+    [ 37.00329206, -86.3656715 ],[ 37.00316095, -86.36581567],[ 37.00303256, -86.36594441],
+    [ 37.00291203, -86.36607157],[ 37.00278014, -86.36622802],[ 37.00269333, -86.36641303],
+    [ 37.00260606, -86.36659437],[ 37.00252845, -86.36675984],[ 37.00243487, -86.36695271],
+    [ 37.00234795, -86.36716654],[ 37.00226102, -86.36735999],[ 37.00218046, -86.36754144],
+    [ 37.00210026, -86.36771854],[ 37.00202358, -86.36787901],[ 37.00194406, -86.36806693],
+    [ 37.00185835, -86.36825428],[ 37.00177578, -86.36843604],[ 37.00169902, -86.36860048],
+    [ 37.0016732 , -86.3687928 ],[ 37.001679  , -86.3689974 ],[ 37.00168488, -86.36919051],
+    [ 37.00169122, -86.36938766],[ 37.00169469, -86.3695562 ],[ 37.00170118, -86.36974238],
+    [ 37.00171055, -86.36993991],[ 37.00167198, -86.37010864],[ 37.00158558, -86.37021273],
+    [ 37.00148934, -86.37030898],[ 37.00139295, -86.37041757],[ 37.00129011, -86.37051816],
+    [ 37.00120286, -86.37061913],[ 37.00112253, -86.37073184],[ 37.00106144, -86.37085264],
+    [ 37.00099678, -86.37100197],[ 37.00092255, -86.37116696],[ 37.00083249, -86.37137665],
+    [ 37.00073506, -86.37159438],[ 37.00065426, -86.37177611],[ 37.00057398, -86.37196168],
+    [ 37.00060097, -86.37214635],[ 37.00074272, -86.37221467],[ 37.0009059 , -86.37222018],
+    [ 37.00107657, -86.37218846],[ 37.00122503, -86.37211976],[ 37.00133803, -86.37204677],
+    [ 37.00145467, -86.37192099],[ 37.00156457, -86.37178347],[ 37.00167114, -86.37162599],
+    [ 37.00176434, -86.37145299],[ 37.00183833, -86.37126821],[ 37.00188646, -86.37112396],
+    [ 37.0019441 , -86.37095574],[ 37.00197296, -86.370787  ],[ 37.00202945, -86.37067751],
+    [ 37.00209668, -86.37048098],[ 37.00218305, -86.37031655],[ 37.00228558, -86.37016005],
+    [ 37.00238818, -86.37002764],[ 37.00249377, -86.36991909],[ 37.00259639, -86.36983868],
+    [ 37.00270864, -86.36976266],[ 37.00281411, -86.3697033 ],[ 37.00292264, -86.36964769],
+    [ 37.00303847, -86.369599  ],[ 37.00316942, -86.36952703],[ 37.00332578, -86.36939126],
+    [ 37.00342743, -86.36921198],[ 37.00346211, -86.36901195],[ 37.00343231, -86.36879509],
+    [ 37.00336736, -86.36861758],[ 37.00327983, -86.36847602],[ 37.00316589, -86.36828932],
+    [ 37.00305696, -86.36810259],[ 37.00296937, -86.36793662],[ 37.00293802, -86.36773416],
+    [ 37.00295792, -86.36753614],[ 37.00301643, -86.36739089],[ 37.00307192, -86.36724611],
+    [ 37.00312788, -86.36711056],[ 37.00320856, -86.36698638],[ 37.00331523, -86.36684361],
+    [ 37.00340519, -86.36672019],[ 37.00350264, -86.36658791],[ 37.00361135, -86.36649982],
+    [ 37.00374245, -86.36645177],[ 37.00387034, -86.3664758 ],[ 37.00395668, -86.36655587],
+    [ 37.00402368, -86.36670753],[ 37.00407807, -86.36686779],[ 37.00412607, -86.36701603],
+    [ 37.00418686, -86.36718831],[ 37.00427315, -86.36742386],[ 37.00436296, -86.3676927 ],
+    [ 37.00442144, -86.36790543],[ 37.00445858, -86.36815496],[ 37.00447715, -86.36847342],
+    [ 37.00444541, -86.36882644],[ 37.00434238, -86.36911386],[ 37.00425654, -86.36927291],
+    [ 37.00418289, -86.36939303],[ 37.00410293, -86.36950912],[ 37.00399731, -86.36962489],
+    [ 37.00390147, -86.36973254],[ 37.00379293, -86.36984054],[ 37.00369701, -86.36994104],
+    [ 37.00359474, -86.37004514],[ 37.0034838 , -86.3701598 ],[ 37.00338477, -86.37024376],
+    [ 37.00327609, -86.37032788],[ 37.00318982, -86.37040789],[ 37.00306205, -86.37049992],
+    [ 37.00294389, -86.37059192],[ 37.00283177, -86.37070006],[ 37.00272312, -86.37083897],
+    [ 37.00264003, -86.37094293],[ 37.00255683, -86.37103895],[ 37.00249914, -86.37115127],
+    [ 37.00243497, -86.37126771],[ 37.00236746, -86.3713964 ],[ 37.00230001, -86.37152106],
+    [ 37.00223561, -86.37164596],[ 37.00217132, -86.37175865],[ 37.0021135 , -86.37187932],
+    [ 37.00204601, -86.37200003],[ 37.00196791, -86.37211434],[ 37.00188761, -86.3722312 ],
+    [ 37.00180726, -86.37233202],[ 37.00173651, -86.37241676],[ 37.00165284, -86.37250555],
+    [ 37.00155067, -86.3726109 ],[ 37.00144762, -86.37271211],[ 37.00136704, -86.37279282],
+    [ 37.00126713, -86.37288565],[ 37.00115123, -86.37299929],[ 37.00103518, -86.37310829],
+    [ 37.0009191 , -86.37321738],[ 37.00082561, -86.37329809],[ 37.00072863, -86.37339546],
+    [ 37.00061364, -86.37350099],[ 37.00051698, -86.37360214],[ 37.00042667, -86.37368311],
+    [ 37.00032338, -86.37378434],[ 37.00022342, -86.37387665],[ 37.00012018, -86.3739737 ],
+    [ 37.00002051, -86.37405916],[ 36.99991404, -86.37415222],[ 36.99981076, -86.37423248],
+    [ 36.99970432, -86.37430523],[ 36.99958169, -86.37432571],[ 36.99946928, -86.37430399],
+    [ 36.99934964, -86.37428072],[ 36.99922365, -86.37425686],[ 36.99908793, -86.37422888],
+    [ 36.99899069, -86.37413638],[ 36.99896465, -86.37397888],[ 36.9989808 , -86.37380904],
+    [ 36.99900664, -86.37362303],[ 36.99904589, -86.37342887],[ 36.9990885 , -86.37323096],
+    [ 36.99912743, -86.3730292 ],[ 36.99916641, -86.37284378],[ 36.99921127, -86.37261758],
+    [ 36.99924349, -86.37245211],[ 36.99932082, -86.37230251],[ 36.99940337, -86.37214797],
+    [ 36.99948814, -86.37199725],[ 36.99958754, -86.37189043],[ 36.99970528, -86.37178738],
+    [ 36.99982625, -86.37169183],[ 36.99997073, -86.37159181],[ 37.00011471, -86.3714889 ],
+    [ 37.00027357, -86.37138907],[ 37.0003852 , -86.37123775],[ 37.00042033, -86.37099884],
+    [ 37.00038811, -86.3707825 ],[ 37.00031195, -86.37062837],[ 37.00026491, -86.37041498],
+    [ 37.00030254, -86.37020247],[ 37.00038472, -86.3700261 ],[ 37.0004699 , -86.36984594],
+    [ 37.00056383, -86.36964375],[ 37.00064015, -86.3694857 ],[ 37.00070993, -86.36934481],
+    [ 37.0008098 , -86.36912411],[ 37.00090662, -86.36891836],[ 37.00098578, -86.36874579],
+    [ 37.00107373, -86.36854755]
+];
+
+let wpIdx = 0;
+const simStartTime = Date.now();
+// Dummy state for all signals
+const ds = {
+  TotalPackVoltage: 120, AcceleratorPosition: 0.3, BatteryCurrent: 50,
+  BatteryVoltage: 115, CurrentSensor1: 4.2, CurrentSensor2: 3.8, MechBrakePressed: 0,
+  PackCurrent: 48, VehicleVelocity: 15, VoltSensor1: 50, VoltSensor2: 49, VoltageofLeast: 3.8,
+  PackPower: 5800, MotorPower: 5500,
+  EnergyVOLExtrapolated: 2400, EnergyFromIntegratedPower: 2280,
+  Efficiency1Hour: 280, Efficiency5Minute: 300, EfficiencyLap: 290,
+  LapIndex: 4, TrackIndex: 0.45, LapIndexSpreadsheet: 4,
+  TrackDistSpreadsheet: 2268,
+  AirTemperature: 28, DHI: 80, DNI: 650, GHI: 700,
+  PrecipitationRate: 0, WindDirection: 180, WindSpeed: 3.5, Zenith: 42,
+  SteeringAngle: 0.0, SOC: 0.715,
+};
+
+function dummyTick() {
+  const w = (v, s, lo, hi) => Math.min(hi, Math.max(lo, v + (Math.random()-.5)*s));
+  // ingress
+  ds.TotalPackVoltage    = w(ds.TotalPackVoltage, 0.5, 80, 160);
+  ds.AcceleratorPosition = w(ds.AcceleratorPosition, 0.05, 0, 1);
+  ds.BatteryCurrent      = w(ds.BatteryCurrent, 5, -50, 200);
+  ds.BatteryVoltage      = w(ds.BatteryVoltage, 0.4, 0, 160);
+  ds.CurrentSensor1      = w(ds.CurrentSensor1, 0.2, 0, 10);
+  ds.CurrentSensor2      = w(ds.CurrentSensor2, 0.2, 0, 10);
+  ds.MechBrakePressed    = Math.random() < 0.02 ? 1 : 0;
+  ds.PackCurrent         = w(ds.PackCurrent, 4, -50, 200);
+  ds.VehicleVelocity     = w(ds.VehicleVelocity, 1, 0, 50);
+  ds.VoltSensor1         = w(ds.VoltSensor1, 0.3, 0, 80);
+  ds.VoltSensor2         = w(ds.VoltSensor2, 0.3, 0, 80);
+  ds.VoltageofLeast      = w(ds.VoltageofLeast, 0.01, 2.5, 4.2);
+  // power
+  ds.PackPower           = ds.PackCurrent * ds.TotalPackVoltage;
+  ds.MotorPower          = ds.BatteryCurrent * ds.BatteryVoltage * (ds.BatteryCurrent < 0 ? -1:1);
+  // energy
+  ds.EnergyVOLExtrapolated    = w(ds.EnergyVOLExtrapolated, 5, 0, 5000);
+  ds.EnergyFromIntegratedPower= w(ds.EnergyFromIntegratedPower, 5, 0, 5000);
+  // efficiency
+  ds.Efficiency1Hour     = w(ds.Efficiency1Hour, 5, 0, 800);
+  ds.Efficiency5Minute   = w(ds.Efficiency5Minute, 8, 0, 800);
+  ds.EfficiencyLap       = w(ds.EfficiencyLap, 6, 0, 800);
+  // localization — lap advances every 4 min of real time, TrackIndex runs 0→1 within each lap
+  const LAP_DURATION_MS = 4 * 60 * 1000;
+  const elapsedMs = Date.now() - simStartTime;
+  const completedLaps = Math.floor(elapsedMs / LAP_DURATION_MS);
+  ds.LapIndex            = 4 + completedLaps; // laps 4+ after seeded 1-3
+  ds.TrackIndex          = (elapsedMs % LAP_DURATION_MS) / LAP_DURATION_MS;
+  ds.LapIndexSpreadsheet = ds.LapIndex;
+  ds.TrackDistSpreadsheet= ds.TrackIndex * 5040;
+  // weather
+  ds.AirTemperature      = w(ds.AirTemperature, 0.05, -10, 45);
+  ds.DHI                 = w(ds.DHI, 2, 0, 400);
+  ds.DNI                 = w(ds.DNI, 5, 0, 1000);
+  ds.GHI                 = w(ds.GHI, 5, 0, 1200);
+  ds.PrecipitationRate   = w(ds.PrecipitationRate, 0.01, 0, 50);
+  ds.WindDirection       = w(ds.WindDirection, 1, 0, 360);
+  ds.WindSpeed           = w(ds.WindSpeed, 0.1, 0, 20);
+  ds.Zenith              = w(ds.Zenith, 0.05, 0, 90);
+  // SOC
+  ds.SteeringAngle       = w(ds.SteeringAngle, 4, -180, 180);
+  ds.SOC                 = w(ds.SOC, 0.0008, 0, 1);
+
+  const pt = WAYPOINTS[wpIdx % WAYPOINTS.length]; wpIdx++;
+  const now = Date.now();
+  pushGPS(now, pt[0], pt[1]);
+  SIGNALS.forEach(sig => { if (ds[sig.field] !== undefined) push(sig.field, now, ds[sig.field]); });
+  history['LapIndexSpreadsheet'].push({ t: now, v: ds.LapIndexSpreadsheet });
+  const cut = Date.now() - MAX_MS;
+  while (history['LapIndexSpreadsheet'].length && history['LapIndexSpreadsheet'][0].t < cut) history['LapIndexSpreadsheet'].shift();
+}
+
+// ─── DATETIME PICKER ─────────────────────────────────────────────────────────
+const dtState = {};
+const DT_SEGS = [
+  { key:'y',  w:42, min:2020, max:2099, pad:4 }, { sep:'-' },
+  { key:'mo', w:24, min:1,    max:12,   pad:2 }, { sep:'-' },
+  { key:'d',  w:24, min:1,    max:31,   pad:2 }, { sep:' ', cls:'dt-sep-space' },
+  { key:'h',  w:24, min:0,    max:23,   pad:2 }, { sep:':' },
+  { key:'mi', w:24, min:0,    max:59,   pad:2 }, { sep:':' },
+  { key:'s',  w:24, min:0,    max:59,   pad:2 },
+];
+
+function dtInit(id, onChange) {
+  const wrap = document.getElementById(id); if (!wrap) return;
+  wrap.innerHTML = '';
+  const now = new Date();
+  dtState[id] = { y:now.getFullYear(), mo:now.getMonth()+1, d:now.getDate(), h:now.getHours(), mi:now.getMinutes(), s:now.getSeconds(), onChange: onChange||null };
+  DT_SEGS.forEach(def => {
+    if (def.sep !== undefined) { const sp = document.createElement('span'); sp.className = def.cls||'dt-sep'; sp.textContent = def.sep; wrap.appendChild(sp); return; }
+    const inp = document.createElement('input');
+    inp.type='number'; inp.className='dt-seg'; inp.style.width=def.w+'px';
+    inp.dataset.key=def.key; inp.dataset.min=def.min; inp.dataset.max=def.max; inp.dataset.pad=def.pad;
+    inp.value = String(dtState[id][def.key]).padStart(def.pad,'0');
+    inp.addEventListener('wheel', e => { e.preventDefault(); dtStep(id, inp, e.deltaY<0?1:-1); }, {passive:false});
+    let dragY=null;
+    inp.addEventListener('mousedown', e => { dragY=e.clientY; inp.focus(); e.preventDefault(); });
+    inp.addEventListener('mousemove', e => { if(dragY===null) return; const delta=Math.round((dragY-e.clientY)/5); if(delta!==0){dtStep(id,inp,delta);dragY=e.clientY;} });
+    inp.addEventListener('mouseup', ()=>{dragY=null;}); inp.addEventListener('mouseleave', ()=>{dragY=null;});
+    inp.addEventListener('keydown', e=>{if(e.key==='ArrowUp'){e.preventDefault();dtStep(id,inp,1);}if(e.key==='ArrowDown'){e.preventDefault();dtStep(id,inp,-1);}});
+    inp.addEventListener('change', ()=>{ const v=parseInt(inp.value); if(!isNaN(v)){dtState[id][def.key]=Math.max(def.min,Math.min(def.max,v));dtRefresh(id);dtState[id].onChange&&dtState[id].onChange();}});
+    wrap.appendChild(inp);
+  });
+}
+
+function dtStep(id, inp, delta) {
+  const st=dtState[id]; if(!st) return;
+  const key=inp.dataset.key, min=parseInt(inp.dataset.min), max=parseInt(inp.dataset.max), span=max-min+1;
+  let v=st[key]+delta; v=min+((v-min)%span+span)%span;
+  st[key]=v; inp.value=String(v).padStart(parseInt(inp.dataset.pad),'0');
+  st.onChange&&st.onChange();
+}
+
+function dtRefresh(id) {
+  const wrap=document.getElementById(id); if(!wrap||!dtState[id]) return;
+  wrap.querySelectorAll('.dt-seg').forEach(inp=>{ inp.value=String(dtState[id][inp.dataset.key]).padStart(parseInt(inp.dataset.pad),'0'); });
+}
+
+function dtSet(id, ms) {
+  if(!document.getElementById(id)) return;
+  if(!dtState[id]) dtInit(id,null);
+  const d=new Date(ms);
+  Object.assign(dtState[id],{y:d.getFullYear(),mo:d.getMonth()+1,d:d.getDate(),h:d.getHours(),mi:d.getMinutes(),s:d.getSeconds()});
+  dtRefresh(id);
+}
+
+function dtGet(id) {
+  const st=dtState[id]; if(!st) return null;
+  return new Date(st.y,st.mo-1,st.d,st.h,st.mi,st.s,0).getTime();
+}
+
+// ─── DATA VIEW (Graph vs Map) ─────────────────────────────────────────────────
+let currentDataView = 'graph';
+
+function setDataView(view) { /* map is now its own tab */ }
+
+// ─── TAB SWITCHING ────────────────────────────────────────────────────────────
+let activeTab = 'overview';
+
+function switchTab(tab) {
+  activeTab = tab;
+  document.getElementById('tabOverview').classList.toggle('active', tab==='overview');
+  document.getElementById('tabData').classList.toggle('active', tab==='data');
+  document.getElementById('tabMap').classList.toggle('active', tab==='map');
+  document.getElementById('tabCalc').classList.toggle('active', tab==='calc');
+  document.getElementById('tabLapAnalysis').classList.toggle('active', tab==='lapanalysis');
+  document.getElementById('signalSearch').closest('.header-search').classList.toggle('hidden', tab!=='data');
+
+  // hide all panels
+  document.getElementById('overviewTab').classList.remove('active');
+  document.getElementById('dataTab').classList.add('hidden');
+  document.getElementById('mapTab').style.display = 'none';
+  document.getElementById('calcTab').classList.remove('active');
+  document.getElementById('lapAnalysisTab').classList.add('hidden');
+  document.getElementById('sidebar').classList.add('hidden');
+  document.getElementById('sidebarToggle').classList.add('hidden');
+
+  if (tab === 'overview') {
+    document.getElementById('overviewTab').classList.add('active');
+    stopLoop();
+    stopReplay();
+    if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+    mapPolylines = []; replayMarker = null; mapFitted = false;
+    startOverviewLoop();
+  } else if (tab === 'data') {
+    stopOverviewLoop();
+    stopReplay();
+    if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+    mapPolylines = []; replayMarker = null; mapFitted = false;
+    document.getElementById('dataTab').classList.remove('hidden');
+    document.getElementById('sidebar').classList.remove('hidden');
+    document.getElementById('sidebarToggle').classList.remove('hidden');
+    if (activeFields.size > 0 && !staticMode) startLoop();
+  } else if (tab === 'map') {
+    stopOverviewLoop(); stopLoop();
+    stopReplay();
+    if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+    mapPolylines = []; replayMarker = null; mapFitted = false;
+    const mapTabEl = document.getElementById('mapTab');
+    mapTabEl.style.display = 'flex';
+    // Build map UI inside mapTab
+    const metricOpts = SIGNALS.map(m =>
+      `<option value="${m.field}" ${m.field === colorByField ? 'selected' : ''}>${m.label}</option>`
+    ).join('');
+    mapTabEl.innerHTML = `
+      <div class="map-toolbar">
+        <div class="map-toolbar-row1">
+          <span class="plot-name">GPS Track</span>
+          <div class="color-by">
+            <span class="color-by-label">Color by</span>
+            <select id="colorBySelect" onchange="setColorBy(this.value)">${metricOpts}</select>
+          </div>
+          <div class="map-legend">
+            <span class="legend-lo" id="legendLo">low</span>
+            <div class="legend-grad"></div>
+            <span class="legend-hi" id="legendHi">high</span>
+          </div>
+        </div>
+        <div class="map-toolbar-row2">
+          <div class="calc-range-mode">
+            <button class="calc-mode-btn on" id="mapModeTime" onclick="setMapMode('time')">Time</button>
+            <button class="calc-mode-btn" id="mapModeLap" onclick="setMapMode('lap')">Lap</button>
+          </div>
+          <div class="calc-inputs-time" id="mapInputsTime">
+            <span class="ts-label">From</span>
+            <span id="dtMapStart" class="dt-picker"></span>
+            <span class="ts-label">To</span>
+            <span id="dtMapEnd" class="dt-picker"></span>
+          </div>
+          <div class="calc-inputs-lap hidden" id="mapInputsLap">
+            <span class="ts-label">Lap</span>
+            <input class="lap-input" type="number" id="mapLapFrom" min="0" max="999" value="1">
+            <span class="lap-range-sep" id="mapLapRangeSep">→</span>
+            <input class="lap-input" type="number" id="mapLapTo" min="0" max="999" value="1">
+            <button class="lap-single-toggle" id="mapLapSingleBtn" onclick="toggleMapLapSingle()">Single lap</button>
+          </div>
+          <button class="ts-apply" onclick="applyMapRange()">Apply</button>
+          <button class="replay-btn" id="replayBtn" onclick="toggleReplay()">▶ Replay</button>
+        </div>
+      </div>
+      <div class="map-wrap"><div id="leafletMap"></div></div>
+    `;
+    leafletMap = L.map('leafletMap', { zoomControl:true, attributionControl:true });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution:'© OpenStreetMap contributors', maxZoom:19,
+    }).addTo(leafletMap);
+    mapTabMode = 'time';
+    mapLapSingleMode = false;
+    dtInit('dtMapStart', null);
+    dtInit('dtMapEnd',   null);
+    // Prefill time pickers to full history range
+    if (gpsHistory.length >= 2) {
+      dtSet('dtMapStart', gpsHistory[0].t);
+      dtSet('dtMapEnd',   gpsHistory[gpsHistory.length-1].t);
+    } else {
+      const now = Date.now();
+      dtSet('dtMapStart', now - 60000);
+      dtSet('dtMapEnd',   now);
+    }
+    mapRangeStart = 0; mapRangeEnd = 1;
+    drawMapTrace();
+  } else if (tab === 'lapanalysis') {
+    stopOverviewLoop(); stopLoop();
+    stopReplay();
+    if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+    mapPolylines = []; replayMarker = null; mapFitted = false;
+    document.getElementById('lapAnalysisTab').classList.remove('hidden');
+    populateLaMetricSelect();
+    renderLapAnalysis();
+  } else {
+    stopOverviewLoop();
+    stopReplay();
+    if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+    mapPolylines = []; replayMarker = null; mapFitted = false;
+    document.getElementById('calcTab').classList.add('active');
+    stopLoop();
+    if (!dtState['dtCalcFrom']) dtInit('dtCalcFrom', null);
+    if (!dtState['dtCalcTo'])   dtInit('dtCalcTo',   null);
+    prefillCalcInputs();
+  }
+}
+
+function prefillCalcInputs() {
+  const now = Date.now();
+  dtSet('dtCalcFrom', now - windowSec*1000);
+  dtSet('dtCalcTo',   now);
+}
+
+// ─── MAP MODE (Time vs Lap) ────────────────────────────────────────────────────
+let mapTabMode = 'time';
+let mapLapSingleMode = false;
+
+function setMapMode(mode) {
+  mapTabMode = mode;
+  document.getElementById('mapModeTime')?.classList.toggle('on', mode==='time');
+  document.getElementById('mapModeLap')?.classList.toggle('on', mode==='lap');
+  document.getElementById('mapInputsTime')?.classList.toggle('hidden', mode!=='time');
+  document.getElementById('mapInputsLap')?.classList.toggle('hidden', mode!=='lap');
+}
+
+function toggleMapLapSingle() {
+  mapLapSingleMode = !mapLapSingleMode;
+  document.getElementById('mapLapSingleBtn')?.classList.toggle('on', mapLapSingleMode);
+  const sep = document.getElementById('mapLapRangeSep');
+  const toInput = document.getElementById('mapLapTo');
+  if (sep) sep.style.display = mapLapSingleMode ? 'none' : '';
+  if (toInput) toInput.style.display = mapLapSingleMode ? 'none' : '';
+}
+
+function applyMapRange() {
+  const n = gpsHistory.length;
+  if (n < 2) return;
+  const tFirst = gpsHistory[0].t, tLast = gpsHistory[n-1].t, tSpan = tLast - tFirst || 1;
+
+  if (mapTabMode === 'time') {
+    const f = dtGet('dtMapStart'), t = dtGet('dtMapEnd');
+    if (!f || !t || f >= t) return;
+    mapRangeStart = Math.max(0, Math.min(1, (f - tFirst) / tSpan));
+    mapRangeEnd   = Math.max(0, Math.min(1, (t - tFirst) / tSpan));
+  } else {
+    const lapFrom = parseInt(document.getElementById('mapLapFrom')?.value || '1');
+    const lapTo   = mapLapSingleMode ? lapFrom : parseInt(document.getElementById('mapLapTo')?.value || lapFrom);
+    const r1 = lapToTimeRange(lapFrom), r2 = lapToTimeRange(lapTo);
+    if (!r1) return;
+    const tS = r1.tStart, tE = (r2 || r1).tEnd;
+    mapRangeStart = Math.max(0, Math.min(1, (tS - tFirst) / tSpan));
+    mapRangeEnd   = Math.max(0, Math.min(1, (tE - tFirst) / tSpan));
+  }
+  stopReplay();
+  drawMapTrace();
+}
+
+
+let calcMode = 'time';      // 'time' | 'lap'
+let lapSingleMode = false;  // when true, lapTo is hidden and equals lapFrom
+
+function setCalcMode(mode) {
+  calcMode = mode;
+  document.getElementById('calcModeTime').classList.toggle('on', mode==='time');
+  document.getElementById('calcModeLap').classList.toggle('on', mode==='lap');
+  document.getElementById('calcInputsTime').classList.toggle('hidden', mode!=='time');
+  document.getElementById('calcInputsLap').classList.toggle('hidden', mode!=='lap');
+}
+
+function toggleLapSingle() {
+  lapSingleMode = !lapSingleMode;
+  const btn = document.getElementById('lapSingleBtn');
+  const sep = document.getElementById('lapRangeSep');
+  const toInput = document.getElementById('lapTo');
+  btn.classList.toggle('on', lapSingleMode);
+  sep.style.display = lapSingleMode ? 'none' : '';
+  toInput.style.display = lapSingleMode ? 'none' : '';
+}
+
+// Resolve a lap number to a [tStart, tEnd] pair using LapIndexSpreadsheet history
+function lapToTimeRange(lapNum) {
+  const lapHist = history['LapIndexSpreadsheet'];
+  if (!lapHist || !lapHist.length) return null;
+  // Find first and last timestamps where lap index rounds to lapNum
+  const pts = lapHist.filter(p => Math.round(p.v) === lapNum);
+  if (!pts.length) return null;
+  return { tStart: pts[0].t, tEnd: pts[pts.length-1].t };
+}
+
+// Build a section HTML helper (collapsed by default unless open=true)
+function makeSection(id, title, contentHTML, open=false) {
+  return `
+    <div class="calc-section${open?' open':''}" id="sec-${id}">
+      <div class="calc-section-header" onclick="toggleSection('sec-${id}')">
+        <div class="calc-section-title">${title}</div>
+        <svg class="calc-section-chevron" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="4 2 8 6 4 10"/></svg>
+      </div>
+      <div class="calc-section-body">${contentHTML}</div>
+    </div>`;
+}
+
+function toggleSection(id) {
+  document.getElementById(id).classList.toggle('open');
+}
+
+// ─── CALCULATIONS ENGINE ──────────────────────────────────────────────────────
+function metricAt(hist, t) {
+  if(!hist||!hist.length) return null;
+  if(t<=hist[0].t) return hist[0].v; if(t>=hist[hist.length-1].t) return hist[hist.length-1].v;
+  let lo=0,hi=hist.length-1;
+  while(lo<hi-1){const mid=(lo+hi)>>1;if(hist[mid].t<=t)lo=mid;else hi=mid;}
+  const frac=(t-hist[lo].t)/(hist[hi].t-hist[lo].t||1);
+  return hist[lo].v+frac*(hist[hi].v-hist[lo].v);
+}
+
+function integrate(hist, tStart, tEnd) {
+  if(!hist||!hist.length) return 0;
+  const pts=hist.filter(p=>p.t>=tStart&&p.t<=tEnd); if(pts.length<2) return 0;
+  let sum=0;
+  for(let i=1;i<pts.length;i++){const dt=(pts[i].t-pts[i-1].t)/1000;sum+=0.5*(pts[i-1].v+pts[i].v)*dt;}
+  return sum;
+}
+
+function average(hist, tStart, tEnd) {
+  const pts=hist?hist.filter(p=>p.t>=tStart&&p.t<=tEnd):[];
+  if(!pts.length) return null;
+  return pts.reduce((s,p)=>s+p.v,0)/pts.length;
+}
+
+function runCalculations() {
+  const statusEl=document.getElementById('calcStatus');
+  let f, t;
+  let lapRangeUsed = null;
+
+  if (calcMode === 'lap') {
+    const lapA = parseInt(document.getElementById('lapFrom').value);
+    const lapB = lapSingleMode ? lapA : parseInt(document.getElementById('lapTo').value);
+    const lapMin = Math.min(lapA, lapB), lapMax = Math.max(lapA, lapB);
+
+    // Resolve lap range to timestamps
+    const lapHist = history['LapIndexSpreadsheet'];
+    if (!lapHist || !lapHist.length) {
+      statusEl.textContent='No lap data'; statusEl.classList.remove('hidden');
+      setTimeout(()=>statusEl.classList.add('hidden'), 2500); return;
+    }
+    const ptsInRange = lapHist.filter(p => {
+      const r = Math.round(p.v);
+      return r >= lapMin && r <= lapMax;
+    });
+    if (!ptsInRange.length) {
+      statusEl.textContent='Laps not found'; statusEl.classList.remove('hidden');
+      setTimeout(()=>statusEl.classList.add('hidden'), 2500); return;
+    }
+    f = ptsInRange[0].t;
+    t = ptsInRange[ptsInRange.length-1].t;
+    lapRangeUsed = { min: lapMin, max: lapMax };
+  } else {
+    f = dtGet('dtCalcFrom');
+    t = dtGet('dtCalcTo');
+    if(!f||!t||f>=t){
+      const flash=id=>{const el=document.getElementById(id);if(el){el.style.borderColor='var(--red)';setTimeout(()=>el.style.borderColor='',1200);}};
+      flash('dtCalcFrom');flash('dtCalcTo'); return;
+    }
+  }
+
+  statusEl.textContent='Computing…'; statusEl.classList.remove('hidden');
+
+  const hists={};
+  SIGNALS.forEach(m=>{hists[m.field]=history[m.field].filter(p=>p.t>=f&&p.t<=t);});
+  const body=document.getElementById('calcBody');
+  const fmt=(v,dec,fb='—')=>v!==null&&!isNaN(v)?v.toFixed(dec):fb;
+
+  const durSec=(t-f)/1000;
+  const avgSpeed=average(hists['VehicleVelocity'],f,t);
+  const socStart=hists['SOC'].length?hists['SOC'][0].v:null;
+  const socEnd=hists['SOC'].length?hists['SOC'][hists['SOC'].length-1].v:null;
+  const deltaSoc=(socStart!==null&&socEnd!==null)?(socStart-socEnd):null;
+  const motorEnergyKWh=integrate(hists['MotorPower'],f,t)/3600000;
+  const packEnergyKWh =integrate(hists['PackPower'], f,t)/3600000;
+  const avgMotor=average(hists['MotorPower'],f,t);
+  const avgPack =average(hists['PackPower'], f,t);
+  const avgEff5=average(hists['Efficiency5Minute'],f,t);
+  const avgEff1h=average(hists['Efficiency1Hour'],f,t);
+  const avgEffLap=average(hists['EfficiencyLap'],f,t);
+
+  // Range label
+  let rangeLabel = '';
+  if (lapRangeUsed) {
+    rangeLabel = lapRangeUsed.min === lapRangeUsed.max
+      ? `Lap ${lapRangeUsed.min}`
+      : `Laps ${lapRangeUsed.min} – ${lapRangeUsed.max}`;
+  } else {
+    const d1=new Date(f), d2=new Date(t);
+    const ts=d=>d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    rangeLabel = `${ts(d1)} → ${ts(d2)}`;
+  }
+
+  // ── Summary section (open by default) ──
+  const summaryHTML = `
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">${rangeLabel}</div>
+    <div class="stat-grid">
+      <div class="stat-card" style="--card-color:#60a5fa"><div class="stat-card-label">Duration</div><div class="stat-card-value">${fmt(durSec/60,1)}<span class="stat-card-unit">min</span></div></div>
+      <div class="stat-card" style="--card-color:#60a5fa"><div class="stat-card-label">Avg Speed</div><div class="stat-card-value">${fmt(avgSpeed,2)}<span class="stat-card-unit">m/s</span></div></div>
+      <div class="stat-card" style="--card-color:#3d9e6b"><div class="stat-card-label">SOC Start</div><div class="stat-card-value">${fmt(socStart!==null?socStart*100:null,1)}<span class="stat-card-unit">%</span></div></div>
+      <div class="stat-card" style="--card-color:#3d9e6b"><div class="stat-card-label">SOC End</div><div class="stat-card-value">${fmt(socEnd!==null?socEnd*100:null,1)}<span class="stat-card-unit">%</span></div></div>
+      <div class="stat-card" style="--card-color:${deltaSoc!==null&&deltaSoc>0?'var(--red)':'var(--green)'}"><div class="stat-card-label">Δ SOC</div><div class="stat-card-value">${deltaSoc!==null?(deltaSoc>0?'−':'+')+fmt(Math.abs(deltaSoc)*100,1):'—'}<span class="stat-card-unit">%</span></div></div>
+    </div>`;
+
+  // ── Energy section ──
+  const energyHTML = `
+    <div class="stat-grid">
+      <div class="stat-card" style="--card-color:#c94f3e"><div class="stat-card-label">Motor Energy</div><div class="stat-card-value">${fmt(motorEnergyKWh*1000,1)}<span class="stat-card-unit">Wh</span></div></div>
+      <div class="stat-card" style="--card-color:#f0a500"><div class="stat-card-label">Pack Energy</div><div class="stat-card-value">${fmt(packEnergyKWh*1000,1)}<span class="stat-card-unit">Wh</span></div></div>
+      <div class="stat-card" style="--card-color:#c94f3e"><div class="stat-card-label">Avg Motor Power</div><div class="stat-card-value">${fmt(avgMotor!==null?avgMotor/1000:null,2)}<span class="stat-card-unit">kW</span></div></div>
+      <div class="stat-card" style="--card-color:#f0a500"><div class="stat-card-label">Avg Pack Power</div><div class="stat-card-value">${fmt(avgPack!==null?avgPack/1000:null,2)}<span class="stat-card-unit">kW</span></div></div>
+    </div>`;
+
+  // ── Efficiency section ──
+  const effHTML = `
+    <div class="stat-grid">
+      <div class="stat-card" style="--card-color:#a78bfa"><div class="stat-card-label">Efficiency 5-min avg</div><div class="stat-card-value">${fmt(avgEff5,1)}<span class="stat-card-unit">J/m</span></div></div>
+      <div class="stat-card" style="--card-color:#a78bfa"><div class="stat-card-label">Efficiency 1-hr avg</div><div class="stat-card-value">${fmt(avgEff1h,1)}<span class="stat-card-unit">J/m</span></div></div>
+      <div class="stat-card" style="--card-color:#a78bfa"><div class="stat-card-label">Efficiency per Lap avg</div><div class="stat-card-value">${fmt(avgEffLap,1)}<span class="stat-card-unit">J/m</span></div></div>
+    </div>`;
+
+  // ── Lap breakdown (only when multi-lap range selected) ──
+  let lapBreakdownHTML = '';
+  if (lapRangeUsed && lapRangeUsed.min !== lapRangeUsed.max) {
+    const lapHist = history['LapIndexSpreadsheet'];
+    let rows = '';
+    for (let lap = lapRangeUsed.min; lap <= lapRangeUsed.max; lap++) {
+      const pts = lapHist.filter(p => Math.round(p.v) === lap);
+      if (!pts.length) continue;
+      const lf = pts[0].t, lt = pts[pts.length-1].t;
+      const ldur = (lt-lf)/1000;
+      const lSocStart = hists['SOC'].length ? metricAt(history['SOC'], lf) : null;
+      const lSocEnd   = hists['SOC'].length ? metricAt(history['SOC'], lt) : null;
+      const lDeltaSoc = (lSocStart!==null&&lSocEnd!==null) ? (lSocStart-lSocEnd)*100 : null;
+      const lSpeed = average(history['VehicleVelocity'], lf, lt);
+      const lPower = average(history['PackPower'], lf, lt);
+      const lEff   = average(history['EfficiencyLap'], lf, lt);
+      rows += `<tr>
+        <td class="td-num">${lap}</td>
+        <td class="td-val">${fmt(ldur/60,1)} min</td>
+        <td class="td-val">${fmt(lSpeed,2)} m/s</td>
+        <td class="td-val">${lDeltaSoc!==null?(lDeltaSoc>0?'−':'+')+fmt(Math.abs(lDeltaSoc),1)+'%':'—'}</td>
+        <td class="td-val">${fmt(lPower!==null?lPower/1000:null,2)} kW</td>
+        <td class="td-val">${fmt(lEff,1)} J/m</td>
+      </tr>`;
+    }
+    lapBreakdownHTML = `
+      <table class="lap-table">
+        <thead><tr><th>Lap</th><th>Duration</th><th>Avg Speed</th><th>Δ SOC</th><th>Avg Pack Power</th><th>Efficiency</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  // ── Charts section — one sub-group per stage ──
+  const chartsHTML = STAGES.map(stage => {
+    const signals = SIGNALS.filter(s => s.stage === stage.id);
+    const count = signals.length;
+    return `
+      <div class="chart-stage-group" id="csg-${stage.id}">
+        <div class="chart-stage-header" onclick="toggleChartStage('csg-${stage.id}')">
+          <span class="chart-stage-dot" style="background:${stage.color}"></span>
+          <span class="chart-stage-name">${stage.label}</span>
+          <span class="chart-stage-count">${count}</span>
+          <svg class="chart-stage-chevron" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="4 2 8 6 4 10"/></svg>
+        </div>
+        <div class="chart-stage-body">
+          <div class="mini-charts-grid" id="chartgrid-${stage.id}"></div>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Build output
+  let html = makeSection('summary', 'Summary', summaryHTML, true);
+  html += makeSection('energy', 'Energy & Power', energyHTML, false);
+  html += makeSection('efficiency', 'Efficiency', effHTML, false);
+  if (lapBreakdownHTML) html += makeSection('lapbreakdown', 'Lap Breakdown', lapBreakdownHTML, false);
+  html += makeSection('charts', 'Time-Series Graphs', `<div class="chart-stages-wrap">${chartsHTML}</div>`, false);
+
+  body.innerHTML = html;
+  drawMiniCharts(f, t);
+  statusEl.textContent='Done'; setTimeout(()=>statusEl.classList.add('hidden'),2000);
+}
+
+function toggleChartStage(id) {
+  document.getElementById(id).classList.toggle('open');
+}
+
+function openInDataTab(field, tFrom, tTo) {
+  // Set static range BEFORE switching tab so buildChartPanel renders correctly
+  staticMode = true;
+  staticFrom = tFrom;
+  staticTo   = tTo;
+
+  // Switch tab (shows data tab, hides others)
+  switchTab('data');
+
+  // Activate signal — this calls buildChartPanel which reads staticMode correctly
+  activateSignal(field, false);
+
+  // Sync the datetime pickers and re-render with the correct range
+  prefillStaticInputs();
+  render();
+}
+
+function drawMiniCharts(tFrom, tTo) {
+  STAGES.forEach(stage => {
+    const grid = document.getElementById('chartgrid-' + stage.id);
+    if (!grid) return;
+    grid.innerHTML = '';
+    const signals = SIGNALS.filter(s => s.stage === stage.id);
+    signals.forEach(m => {
+    const pts=history[m.field].filter(p=>p.t>=tFrom&&p.t<=tTo);
+    const card=document.createElement('div'); card.className='mini-chart-card';
+    card.title = `Open ${m.label} in Data tab`;
+    card.innerHTML=`<div class="mini-chart-title"><span class="dot" style="background:${m.color}"></span>${m.label}<span style="font-size:10px;color:var(--muted);margin-left:auto">${m.unit}</span><span class="mini-chart-goto">↗</span></div><canvas class="mini-chart-canvas" width="280" height="120"></canvas>`;
+    card.style.cursor = 'pointer';
+    card.addEventListener('click', () => openInDataTab(m.field, tFrom, tTo));
+    card.addEventListener('mouseenter', () => card.style.borderColor = m.color + '60');
+    card.addEventListener('mouseleave', () => card.style.borderColor = '');
+    grid.appendChild(card);
+    requestAnimationFrame(()=>{
+      const canvas=card.querySelector('canvas');
+      const dpr=window.devicePixelRatio||1;
+      const W=canvas.offsetWidth||280,H=120;
+      canvas.width=W*dpr;canvas.height=H*dpr;
+      const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);
+      const PAD={t:8,b:20,l:38,r:8};
+      const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
+      const LABEL='#7a8fa3',FONT='9px IBM Plex Mono,monospace';
+      ctx.clearRect(0,0,W,H);
+      if(pts.length<2){ctx.fillStyle=LABEL;ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='10px IBM Plex Mono,monospace';ctx.fillText('No data',PAD.l+cW/2,PAD.t+cH/2);return;}
+      const vs=pts.map(p=>p.v);
+      const yMin=Math.min(...vs),yMax=Math.max(...vs),yRange=yMax-yMin||1;
+      const tA=pts[0].t,tB=pts[pts.length-1].t,tSpan=tB-tA||1;
+      const toX=t=>PAD.l+((t-tA)/tSpan)*cW;
+      const toY=v=>PAD.t+cH-((v-yMin)/yRange)*cH;
+      ctx.strokeStyle='#ffffff0a';ctx.lineWidth=.5;
+      for(let i=0;i<=4;i++){const y=PAD.t+(i/4)*cH;ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+cW,y);ctx.stroke();}
+      ctx.font=FONT;ctx.fillStyle=LABEL;ctx.textAlign='right';ctx.textBaseline='middle';
+      for(let i=0;i<=4;i++){const v=yMin+(yRange/4)*(4-i);ctx.fillText(v.toFixed(m.decimals<=1?1:2),PAD.l-3,PAD.t+(i/4)*cH);}
+      ctx.textAlign='center';ctx.textBaseline='top';
+      const xN=Math.min(4,Math.max(1,Math.floor(cW/55)));
+      const showSecs=tSpan<90000;
+      for(let i=0;i<=xN;i++){const tt=tA+(i/xN)*tSpan;const d=new Date(tt);const lbl=showSecs?`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`:`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;ctx.fillText(lbl,toX(tt),PAD.t+cH+3);}
+      ctx.strokeStyle='#ffffff18';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+cH);ctx.lineTo(PAD.l+cW,PAD.t+cH);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(toX(pts[0].t),toY(pts[0].v));pts.slice(1).forEach(p=>ctx.lineTo(toX(p.t),toY(p.v)));ctx.lineTo(toX(pts[pts.length-1].t),PAD.t+cH);ctx.lineTo(toX(pts[0].t),PAD.t+cH);ctx.closePath();ctx.fillStyle=m.color+'18';ctx.fill();
+      ctx.beginPath();ctx.moveTo(toX(pts[0].t),toY(pts[0].v));pts.slice(1).forEach(p=>ctx.lineTo(toX(p.t),toY(p.v)));ctx.strokeStyle=m.color;ctx.lineWidth=1.5;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();
+    });
+    }); // end signals.forEach
+  }); // end STAGES.forEach
+}
+
+// ─── OVERVIEW ENGINE ──────────────────────────────────────────────────────────
+let ovRafId = null;
+
+function startOverviewLoop() { if (!ovRafId) ovRafId = requestAnimationFrame(ovLoop); }
+function stopOverviewLoop()  { if (ovRafId) { cancelAnimationFrame(ovRafId); ovRafId = null; } }
+function ovLoop() { try { renderOverview(); } catch(e) { console.error('overview error', e); } ovRafId = requestAnimationFrame(ovLoop); }
+
+function ovLast(field) {
+  const h = history[field]; return (h && h.length) ? h[h.length-1].v : null;
+}
+
+function ovSet(id, text) {
+  const el = document.getElementById(id); if (el) el.textContent = text;
+}
+function ovFmt(v, dec) { return (v !== null && !isNaN(v)) ? v.toFixed(dec) : '—'; }
+
+function renderOverview() {
+  const fmt = ovFmt;
+
+  // SOC
+  const soc = ovLast('SOC');
+  const socPct = soc !== null ? soc * 100 : null;
+  const socColor = socPct === null ? 'var(--text)' : socPct < 20 ? '#c94f3e' : socPct < 50 ? '#c9a84c' : '#3d9e6b';
+  const socEl = document.getElementById('ovSocPct');
+  if (socEl) { socEl.textContent = socPct !== null ? socPct.toFixed(1) : '—'; socEl.style.color = socColor; }
+  const socFill = document.getElementById('ovSocFill');
+  if (socFill) socFill.style.width = socPct !== null ? Math.max(0,Math.min(100,socPct)) + '%' : '0%';
+
+  // Speed
+  const spd = ovLast('VehicleVelocity');
+  const spdEl = document.getElementById('ovSpeed');
+  if (spdEl) spdEl.textContent = fmt(spd, 1);
+  ovSet('ovSpeedKmh', spd !== null ? (spd * 3.6).toFixed(1) : '—');
+
+  // Lap & Track
+  ovSet('ovLap', ovLast('LapIndex') !== null ? Math.round(ovLast('LapIndex')) : '—');
+  ovSet('ovTrackDist', ovLast('TrackDistSpreadsheet') !== null ? Math.round(ovLast('TrackDistSpreadsheet')) : '—');
+  const trackPct = ovLast('TrackIndex') !== null ? Math.max(0, Math.min(100, ovLast('TrackIndex') * 100)) : 0;
+  const trackFillEl = document.getElementById('ovTrackFill');
+  if (trackFillEl) trackFillEl.style.width = trackPct + '%';
+
+  // Battery
+  ovSet('ovPackVoltage', fmt(ovLast('TotalPackVoltage'), 1));
+  ovSet('ovPackCurrent', fmt(ovLast('PackCurrent'), 1));
+  const wv = ovLast('VoltageofLeast');
+  const wcEl = document.getElementById('ovWeakCell');
+  if (wcEl) { wcEl.textContent = fmt(wv, 2); wcEl.style.color = wv === null ? 'var(--text)' : wv < 3.0 ? '#c94f3e' : wv < 3.4 ? '#c9a84c' : '#3d9e6b'; }
+
+  // Power
+  const pp = ovLast('PackPower'), mp = ovLast('MotorPower');
+  const ppEl = document.getElementById('ovPackPower');
+  if (ppEl) { ppEl.textContent = pp !== null ? (Math.abs(pp) >= 1000 ? (pp/1000).toFixed(1)+'k' : Math.round(pp)) : '—'; ppEl.style.color = pp === null ? 'var(--text)' : pp > 500 ? '#c94f3e' : pp < -200 ? '#3d9e6b' : 'var(--muted)'; }
+  const mpEl = document.getElementById('ovMotorPower');
+  if (mpEl) { mpEl.textContent = mp !== null ? (Math.abs(mp) >= 1000 ? (mp/1000).toFixed(1)+'k' : Math.round(mp)) : '—'; mpEl.style.color = mp === null ? 'var(--text)' : mp > 500 ? '#c94f3e' : mp < -200 ? '#3d9e6b' : 'var(--muted)'; }
+
+  // Drive state pills
+  const brake = ovLast('MechBrakePressed');
+  const regen = mp !== null && mp < -100;
+  const brakePill = document.getElementById('ovBrakePill');
+  if (brakePill) brakePill.className = 'ov-state-pill' + (brake ? ' active-brake' : '');
+  ovSet('ovBrakeLabel', 'Brake ' + (brake ? 'ON' : 'OFF'));
+  const regenPill = document.getElementById('ovRegenPill');
+  if (regenPill) regenPill.className = 'ov-state-pill' + (regen ? ' active-regen' : '');
+  ovSet('ovRegenLabel', 'Regen ' + (regen ? 'ON' : 'OFF'));
+
+  // Solar & Efficiency
+  ovSet('ovGHI', fmt(ovLast('GHI'), 0));
+  ovSet('ovEff5m', fmt(ovLast('Efficiency5Minute'), 0));
+  ovSet('ovEff1h', fmt(ovLast('Efficiency1Hour'), 0));
+
+  // Weather
+  ovSet('ovAirTemp', fmt(ovLast('AirTemperature'), 1));
+  ovSet('ovWindSpd', fmt(ovLast('WindSpeed'), 1));
+  ovSet('ovWindDir', fmt(ovLast('WindDirection'), 0));
+  ovSet('ovZenith',  fmt(ovLast('Zenith'), 0));
+}
+
+// ─── LAP ANALYSIS ENGINE ─────────────────────────────────────────────────────
+let laAgg = 'mean';
+
+function setLaAgg(mode) {
+  laAgg = mode;
+  ['mean','median','max','min'].forEach(m => {
+    document.getElementById('laAgg' + m.charAt(0).toUpperCase() + m.slice(1))?.classList.toggle('on', m === mode);
+  });
+  renderLapAnalysis();
+}
+
+function populateLaMetricSelect() {
+  const sel = document.getElementById('laMetricSelect');
+  if (!sel) return;
+  // only repopulate if empty
+  if (sel.options.length > 1) return;
+  STAGES.forEach(stage => {
+    const sigs = SIGNALS.filter(s => s.stage === stage.id);
+    if (!sigs.length) return;
+    const grp = document.createElement('optgroup');
+    grp.label = stage.label;
+    sigs.forEach(sig => {
+      const opt = document.createElement('option');
+      opt.value = sig.field;
+      opt.textContent = sig.label + (sig.unit ? ' (' + sig.unit + ')' : '');
+      grp.appendChild(opt);
+    });
+    sel.appendChild(grp);
+  });
+}
+
+function getLapData() {
+  // All signals are pushed at the same timestamps, so LapIndex[i] corresponds to signal[i].
+  // Group each signal's values by the lap number recorded at the same index.
+  const lapIdxHistory = history['LapIndex'];
+  if (!lapIdxHistory || !lapIdxHistory.length) return {};
+
+  const lapMap = {}; // lap# -> { field -> { values[], times[] } }
+
+  SIGNALS.forEach(sig => {
+    const h = history[sig.field];
+    if (!h || !h.length) return;
+    const len = Math.min(h.length, lapIdxHistory.length);
+    for (let i = 0; i < len; i++) {
+      const lap = Math.round(lapIdxHistory[i].v);
+      if (lap < 1) continue;
+      if (!lapMap[lap]) lapMap[lap] = {};
+      if (!lapMap[lap][sig.field]) lapMap[lap][sig.field] = { values: [], times: [] };
+      lapMap[lap][sig.field].values.push(h[i].v);
+      lapMap[lap][sig.field].times.push(h[i].t);
+    }
+  });
+
+  return lapMap;
+}
+
+function aggregate(values, mode) {
+  if (!values || !values.length) return null;
+  switch(mode) {
+    case 'mean':   return values.reduce((a,b)=>a+b,0)/values.length;
+    case 'median': { const s=[...values].sort((a,b)=>a-b); const m=s.length>>1; return s.length%2?s[m]:(s[m-1]+s[m])/2; }
+    case 'max':    return Math.max(...values);
+    case 'min':    return Math.min(...values);
+  }
+}
+
+// Find the timestamp when a field hit its min or max within a lap
+function lapExtremeTime(lapEntry, field, mode) {
+  if (!lapEntry || !lapEntry[field]) return null;
+  const { values, times } = lapEntry[field];
+  if (!values.length) return null;
+  let idx = 0;
+  for (let i = 1; i < values.length; i++) {
+    if (mode === 'max' ? values[i] > values[idx] : values[i] < values[idx]) idx = i;
+  }
+  return times[idx] || null;
+}
+
+// ─── LAP ANALYSIS TOOLTIP ─────────────────────────────────────────────────────
+let laHitData = [];
+let laHitSig = null;
+
+function laCanvasHover(e, canvas) {
+  const tt = document.getElementById('laTooltip');
+  if (!tt || !laHitData.length) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const HIT_RADIUS = 18;
+  let closest = null, closestDist = Infinity;
+  laHitData.forEach(h => {
+    const d = Math.sqrt((mx - h.x) ** 2 + (my - h.y) ** 2);
+    if (d < HIT_RADIUS && d < closestDist) { closest = h; closestDist = d; }
+  });
+  if (!closest) { tt.style.display = 'none'; canvas.style.cursor = ''; return; }
+  canvas.style.cursor = 'crosshair';
+  const dec = laHitSig ? (laHitSig.decimals <= 1 ? 1 : 2) : 2;
+  const unit = laHitSig ? laHitSig.unit : '';
+  const color = laHitSig ? laHitSig.color : 'var(--gold)';
+  let timeStr = '';
+  if (closest.point.extremeT) {
+    const d = new Date(closest.point.extremeT);
+    const hh = String(d.getHours()).padStart(2,'0');
+    const mm = String(d.getMinutes()).padStart(2,'0');
+    const ss = String(d.getSeconds()).padStart(2,'0');
+    timeStr = `<div style="color:var(--muted);margin-top:3px">${hh}:${mm}:${ss}</div>`;
+  }
+  tt.innerHTML = `<span style="color:var(--muted)">Lap </span><span style="color:${color};font-weight:600">${closest.point.lap}</span><span style="color:var(--border3)"> · </span><span style="color:${color};font-weight:600">${closest.point.agg.toFixed(dec)}</span><span style="color:var(--muted)"> ${unit}</span>${timeStr}`;
+  // Position tooltip above/right of cursor, flip if near edge
+  const wrap = canvas.parentElement.getBoundingClientRect();
+  let tx = e.clientX - wrap.left + 14;
+  let ty = e.clientY - wrap.top - 38;
+  tt.style.display = 'block';
+  const ttW = tt.offsetWidth, ttH = tt.offsetHeight;
+  if (tx + ttW > wrap.width - 8) tx = e.clientX - wrap.left - ttW - 14;
+  if (ty < 4) ty = e.clientY - wrap.top + 14;
+  tt.style.left = tx + 'px';
+  tt.style.top  = ty + 'px';
+}
+
+function renderLapAnalysis() {
+  const sel = document.getElementById('laMetricSelect');
+  const emptyEl = document.getElementById('laEmpty');
+  const wrapEl = document.getElementById('laChartWrap');
+  const statsEl = document.getElementById('laStatsRow');
+  if (!sel) return;
+
+  const field = sel.value;
+  const sig = SIGNALS.find(s => s.field === field);
+
+  if (!field || !sig) {
+    emptyEl.innerHTML = '<div class="plot-empty-hint">Select a metric above to compare lap averages</div><div class="plot-empty-sub">Each dot = one lap · connected line shows trend</div>';
+    emptyEl.classList.remove('hidden');
+    wrapEl.classList.add('hidden');
+    statsEl.classList.add('hidden');
+    return;
+  }
+
+  const lapMap = getLapData();
+  const laps = Object.keys(lapMap).map(Number).sort((a,b)=>a-b);
+
+  const points = laps.map(lap => {
+    const entry = lapMap[lap];
+    const vals = entry?.[field]?.values;
+    const times = entry?.[field]?.times;
+    const agg = aggregate(vals, laAgg);
+    let pointT = null;
+    if (vals && times && vals.length) {
+      if (laAgg === 'min' || laAgg === 'max') {
+        pointT = lapExtremeTime(entry, field, laAgg);
+      } else {
+        // Use the midpoint timestamp of the lap
+        pointT = null;
+      }
+    }
+    return { lap, agg, count: vals ? vals.length : 0, extremeT: pointT };
+  }).filter(p => p.agg !== null);
+
+  // Apply lap range filter
+  const lapFromEl = document.getElementById('laLapFrom');
+  const lapToEl   = document.getElementById('laLapTo');
+  const rangeFrom = lapFromEl ? (parseInt(lapFromEl.value) || 1)   : 1;
+  const rangeTo   = lapToEl   ? (parseInt(lapToEl.value)   || 999) : 999;
+  const visiblePoints = points.filter(p => p.lap >= rangeFrom && p.lap <= rangeTo);
+
+  if (visiblePoints.length < 1) {
+    emptyEl.innerHTML = '<div class="plot-empty-hint">No laps in that range</div><div class="plot-empty-sub">Try adjusting the lap range above</div>';
+    emptyEl.classList.remove('hidden');
+    wrapEl.classList.add('hidden');
+    statsEl.classList.add('hidden');
+    return;
+  }
+
+  emptyEl.classList.add('hidden');
+  wrapEl.classList.remove('hidden');
+  statsEl.classList.remove('hidden');
+
+  // Draw scatter + line chart
+  requestAnimationFrame(() => {
+    const canvas = document.getElementById('laCanvas');
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.offsetWidth, H = canvas.offsetHeight;
+    if (!W || !H) return;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr);
+
+    const PAD = { t: 28, b: 48, l: 64, r: 28 };
+    const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+    const FONT = '11px IBM Plex Mono,monospace';
+    const LABEL = '#7a8fa3';
+
+    ctx.clearRect(0, 0, W, H);
+
+    const vals = visiblePoints.map(p => p.agg);
+    const yMin = Math.min(...vals), yMax = Math.max(...vals);
+    const yRange = yMax - yMin || 1;
+    const yPad = yRange * 0.15;
+    const yLo = yMin - yPad, yHi = yMax + yPad;
+
+    const lapNums = visiblePoints.map(p => p.lap);
+    const xMin = Math.min(...lapNums), xMax = Math.max(...lapNums);
+    const xRange = xMax - xMin || 1;
+
+    const toX = l => PAD.l + ((l - xMin) / xRange) * cW;
+    const toY = v => PAD.t + cH - ((v - yLo) / (yHi - yLo)) * cH;
+
+    // Grid
+    ctx.strokeStyle = '#ffffff0a'; ctx.lineWidth = 0.5;
+    for (let i = 0; i <= 5; i++) {
+      const y = PAD.t + (i / 5) * cH;
+      ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + cW, y); ctx.stroke();
+    }
+
+    // Y axis labels
+    ctx.font = FONT; ctx.fillStyle = LABEL; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for (let i = 0; i <= 5; i++) {
+      const v = yHi - (i / 5) * (yHi - yLo);
+      const y = PAD.t + (i / 5) * cH;
+      ctx.fillText(v.toFixed(sig.decimals <= 1 ? 1 : 2), PAD.l - 8, y);
+    }
+
+    // Y axis unit label (rotated)
+    ctx.save();
+    ctx.translate(14, PAD.t + cH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.font = '10px IBM Plex Mono,monospace'; ctx.fillStyle = LABEL; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(sig.unit || '', 0, 0);
+    ctx.restore();
+
+    // X axis labels
+    ctx.font = FONT; ctx.fillStyle = LABEL; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    visiblePoints.forEach(p => {
+      ctx.fillText('Lap ' + p.lap, toX(p.lap), PAD.t + cH + 8);
+    });
+
+    // Axes
+    ctx.strokeStyle = '#ffffff18'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t + cH); ctx.lineTo(PAD.l + cW, PAD.t + cH); ctx.stroke();
+
+    // Connected line
+    if (visiblePoints.length >= 2) {
+      ctx.beginPath();
+      ctx.moveTo(toX(visiblePoints[0].lap), toY(visiblePoints[0].agg));
+      visiblePoints.slice(1).forEach(p => ctx.lineTo(toX(p.lap), toY(p.agg)));
+      ctx.strokeStyle = sig.color + '80'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.setLineDash([6, 3]);
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+
+    // Scatter dots with glow
+    visiblePoints.forEach((p, i) => {
+      const x = toX(p.lap), y = toY(p.agg);
+      // Glow
+      ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2);
+      ctx.fillStyle = sig.color + '18'; ctx.fill();
+      // Dot
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = sig.color; ctx.fill();
+      ctx.strokeStyle = '#ffffff30'; ctx.lineWidth = 1.5; ctx.stroke();
+      // Value label above dot
+      ctx.font = '11px IBM Plex Mono,monospace'; ctx.fillStyle = sig.color;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.fillText(p.agg.toFixed(sig.decimals <= 1 ? 1 : 2), x, y - 10);
+    });
+
+    // Chart title
+    ctx.font = '12px IBM Plex Mono,monospace'; ctx.fillStyle = '#f0f4f8';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    const aggLabel = laAgg.charAt(0).toUpperCase() + laAgg.slice(1);
+    const lapRange = visiblePoints.length < points.length
+      ? ` (laps ${visiblePoints[0].lap}–${visiblePoints[visiblePoints.length-1].lap})` : '';
+    ctx.fillText(aggLabel + ' ' + sig.label + ' per Lap' + lapRange, PAD.l, 6);
+
+    // Store hit data for tooltip
+    laHitData = visiblePoints.map(p => ({ x: toX(p.lap), y: toY(p.agg), point: p }));
+    laHitSig = sig;
+
+    // Attach hover listener (replace each time to stay fresh)
+    canvas.onmousemove = (e) => laCanvasHover(e, canvas);
+    canvas.onmouseleave = () => { const tt = document.getElementById('laTooltip'); if (tt) tt.style.display = 'none'; };
+  });
+
+  // Stats bar — computed over the visible window only
+  const vals2 = visiblePoints.map(p => p.agg);
+  const bestVal  = laAgg === 'min' ? Math.min(...vals2) : Math.max(...vals2);
+  const worstVal = laAgg === 'min' ? Math.max(...vals2) : Math.min(...vals2);
+  const mean = vals2.reduce((a,b)=>a+b,0)/vals2.length;
+  const trend = vals2.length >= 2 ? vals2[vals2.length-1] - vals2[0] : 0;
+  const dec = sig.decimals <= 1 ? 1 : 2;
+
+  const bestPoint  = visiblePoints.find(p => p.agg === bestVal);
+  const worstPoint = visiblePoints.find(p => p.agg === worstVal);
+
+  function fmtExtremeTime(point) {
+    if (!point?.extremeT) return `Lap ${point?.lap ?? '—'}`;
+    const d = new Date(point.extremeT);
+    const hh = String(d.getHours()).padStart(2,'0');
+    const mm = String(d.getMinutes()).padStart(2,'0');
+    const ss = String(d.getSeconds()).padStart(2,'0');
+    return `${hh}:${mm}:${ss}`;
+  }
+
+  const showTime = laAgg === 'min' || laAgg === 'max';
+  const bestSub  = showTime ? `<div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:3px">${fmtExtremeTime(bestPoint)}</div>`  : '';
+  const worstSub = showTime ? `<div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:3px">${fmtExtremeTime(worstPoint)}</div>` : '';
+
+  statsEl.innerHTML = `
+    <div class="la-stat-card">
+      <div class="la-stat-card-label">Showing</div>
+      <div class="la-stat-card-val">${visiblePoints.length}<span class="la-stat-card-unit">/ ${points.length} laps</span></div>
+    </div>
+    <div class="la-stat-card">
+      <div class="la-stat-card-label">Mean (shown)</div>
+      <div class="la-stat-card-val">${mean.toFixed(dec)}<span class="la-stat-card-unit">${sig.unit}</span></div>
+    </div>
+    <div class="la-stat-card">
+      <div class="la-stat-card-label">Best</div>
+      <div class="la-stat-card-val" style="color:#3d9e6b">${bestVal.toFixed(dec)}<span class="la-stat-card-unit">${sig.unit}</span></div>
+      ${bestSub}
+    </div>
+    <div class="la-stat-card">
+      <div class="la-stat-card-label">Worst</div>
+      <div class="la-stat-card-val" style="color:#c94f3e">${worstVal.toFixed(dec)}<span class="la-stat-card-unit">${sig.unit}</span></div>
+      ${worstSub}
+    </div>
+    <div class="la-stat-card">
+      <div class="la-stat-card-label">Trend (first→last)</div>
+      <div class="la-stat-card-val" style="color:${trend>=0?'#3d9e6b':'#c94f3e'}">${trend>=0?'+':''}${trend.toFixed(dec)}<span class="la-stat-card-unit">${sig.unit}</span></div>
+    </div>
+  `;
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+buildSidebar();
+
+// ── Seed 3 laps of historical data ──────────────────────────────────────────
+function seedHistory() {
+  const LAP_DURATION_MS = 4 * 60 * 1000; // 4 min per lap (simulated)
+  const TICK_INTERVAL_MS = 2000;          // one point every 2s
+  const now = Date.now();
+  const seed = {
+    TotalPackVoltage: 122, AcceleratorPosition: 0.32, BatteryCurrent: 52,
+    BatteryVoltage: 116, CurrentSensor1: 4.1, CurrentSensor2: 3.9, MechBrakePressed: 0,
+    PackCurrent: 50, VehicleVelocity: 15.5, VoltSensor1: 51, VoltSensor2: 50, VoltageofLeast: 3.82,
+    PackPower: 6100, MotorPower: 5700,
+    EnergyVOLExtrapolated: 2500, EnergyFromIntegratedPower: 2400,
+    Efficiency1Hour: 285, Efficiency5Minute: 305, EfficiencyLap: 295,
+    LapIndex: 1, TrackIndex: 0.0, LapIndexSpreadsheet: 1,
+    TrackDistSpreadsheet: 0,
+    AirTemperature: 27.5, DHI: 78, DNI: 640, GHI: 695,
+    PrecipitationRate: 0, WindDirection: 178, WindSpeed: 3.4, Zenith: 43,
+    SteeringAngle: 0.0, SOC: 0.795,
+  };
+  const sw = (v, s, lo, hi) => Math.min(hi, Math.max(lo, v + (Math.random() - .5) * s));
+  const totalTicks = Math.floor((3 * LAP_DURATION_MS) / TICK_INTERVAL_MS);
+  let wpSeed = 0;
+
+  for (let tick = 0; tick < totalTicks; tick++) {
+    const t = now - (totalTicks - tick) * TICK_INTERVAL_MS;
+    const lapProgress = (tick % (LAP_DURATION_MS / TICK_INTERVAL_MS)) / (LAP_DURATION_MS / TICK_INTERVAL_MS);
+    const lapNum = 1 + Math.floor(tick / (LAP_DURATION_MS / TICK_INTERVAL_MS));
+
+    seed.TotalPackVoltage    = sw(seed.TotalPackVoltage, 0.4, 80, 160);
+    seed.AcceleratorPosition = sw(seed.AcceleratorPosition, 0.04, 0, 1);
+    seed.BatteryCurrent      = sw(seed.BatteryCurrent, 4, -50, 200);
+    seed.BatteryVoltage      = sw(seed.BatteryVoltage, 0.3, 0, 160);
+    seed.CurrentSensor1      = sw(seed.CurrentSensor1, 0.15, 0, 10);
+    seed.CurrentSensor2      = sw(seed.CurrentSensor2, 0.15, 0, 10);
+    seed.MechBrakePressed    = Math.random() < 0.02 ? 1 : 0;
+    seed.PackCurrent         = sw(seed.PackCurrent, 3, -50, 200);
+    seed.VehicleVelocity     = sw(seed.VehicleVelocity, 0.8, 0, 50);
+    seed.VoltSensor1         = sw(seed.VoltSensor1, 0.25, 0, 80);
+    seed.VoltSensor2         = sw(seed.VoltSensor2, 0.25, 0, 80);
+    seed.VoltageofLeast      = sw(seed.VoltageofLeast, 0.008, 2.5, 4.2);
+    seed.PackPower           = seed.PackCurrent * seed.TotalPackVoltage;
+    seed.MotorPower          = seed.BatteryCurrent * seed.BatteryVoltage * (seed.BatteryCurrent < 0 ? -1 : 1);
+    seed.EnergyVOLExtrapolated     = sw(seed.EnergyVOLExtrapolated, 4, 0, 5000);
+    seed.EnergyFromIntegratedPower = sw(seed.EnergyFromIntegratedPower, 4, 0, 5000);
+    seed.Efficiency1Hour     = sw(seed.Efficiency1Hour, 4, 0, 800);
+    seed.Efficiency5Minute   = sw(seed.Efficiency5Minute, 7, 0, 800);
+    seed.EfficiencyLap       = sw(seed.EfficiencyLap, 5, 0, 800);
+    seed.LapIndex            = lapNum;
+    seed.TrackIndex          = lapProgress;
+    seed.LapIndexSpreadsheet = lapNum;
+    seed.TrackDistSpreadsheet= lapProgress * 5040;
+    seed.AirTemperature      = sw(seed.AirTemperature, 0.04, -10, 45);
+    seed.DHI                 = sw(seed.DHI, 1.5, 0, 400);
+    seed.DNI                 = sw(seed.DNI, 4, 0, 1000);
+    seed.GHI                 = sw(seed.GHI, 4, 0, 1200);
+    seed.PrecipitationRate   = sw(seed.PrecipitationRate, 0.005, 0, 50);
+    seed.WindDirection       = sw(seed.WindDirection, 0.8, 0, 360);
+    seed.WindSpeed           = sw(seed.WindSpeed, 0.08, 0, 20);
+    seed.Zenith              = sw(seed.Zenith, 0.04, 0, 90);
+    seed.SteeringAngle       = sw(seed.SteeringAngle, 4, -180, 180);
+    seed.SOC                 = sw(seed.SOC, 0.0008, 0, 1);
+
+    SIGNALS.forEach(sig => {
+      if (seed[sig.field] !== undefined) {
+        const m = sig;
+        const v = m.transform ? m.transform(seed[sig.field]) : seed[sig.field];
+        history[sig.field].push({ t, v });
+      }
+    });
+    history['LapIndexSpreadsheet'].push({ t, v: seed.LapIndexSpreadsheet });
+    const wp = WAYPOINTS[wpSeed % WAYPOINTS.length]; wpSeed++;
+    gpsHistory.push({ t, lat: wp[0], lon: wp[1] });
+  }
+}
+
+// ─── DATA SOURCE SWITCHING ────────────────────────────────────────────────────
+let dataSource = 'sim';
+let dummyTickInterval = null;
+let telemetryChannel = null;
+
+function flushHistory() {
+  SIGNALS.forEach(m => {
+    history[m.field] = [];
+    latest[m.field] = { value: null, prev: null };
+    const el = document.getElementById('sigval-' + m.field);
+    if (el) el.textContent = '—';
+  });
+  history['LapIndexSpreadsheet'] = [];
+  gpsHistory.length = 0;
+  ['vital-voltage','vital-soc','vital-speed','vital-power'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.firstChild) el.firstChild.textContent = '—';
+  });
+  if (activeTab === 'map') {
+    if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+    mapPolylines = []; replayMarker = null; mapFitted = false;
+  }
+}
+
+function refreshActiveTab() {
+  switch (activeTab) {
+    case 'overview':    renderOverview(); break;
+    case 'data':        if (activeFields.size > 0) render(); break;
+    case 'map':         switchTab('map'); break;
+    case 'lapanalysis': renderLapAnalysis(); break;
+  }
+}
+
+function setSource(src) {
+  if (src === dataSource) return;
+  dataSource = src;
+
+  const simBtn   = document.getElementById('srcSimBtn');
+  const carBtn   = document.getElementById('srcCarBtn');
+  const simBadge = document.getElementById('srcSimBadge');
+  const carBadge = document.getElementById('srcCarBadge');
+
+  // Stop whatever is currently running
+  if (dummyTickInterval) { clearInterval(dummyTickInterval); dummyTickInterval = null; }
+  if (telemetryChannel)  { telemetryChannel.onmessage = null; }
+
+  // Wipe all stale data from the previous source
+  flushHistory();
+
+  if (src === 'sim') {
+    simBtn.classList.add('active', 'sim-active');
+    simBtn.classList.remove('car-active');
+    carBtn.classList.remove('active', 'car-active', 'sim-active');
+    simBadge.textContent = 'SIM';
+    simBadge.className   = 'source-badge sim';
+    carBadge.textContent = 'STANDBY';
+    carBadge.className   = 'source-badge car';
+    seedHistory();
+    dummyTickInterval = setInterval(dummyTick, 500);
+  } else {
+    carBtn.classList.add('active', 'car-active');
+    carBtn.classList.remove('sim-active');
+    simBtn.classList.remove('active', 'sim-active', 'car-active');
+    carBadge.textContent = 'CONNECTING…';
+    carBadge.className   = 'source-badge car';
+    simBadge.textContent = 'OFF';
+    simBadge.className   = 'source-badge sim';
+    if (!telemetryChannel) telemetryChannel = new BroadcastChannel('telemetry');
+    telemetryChannel.onmessage = (e) => {
+      ingest(e.data);
+      const badge = document.getElementById('srcCarBadge');
+      if (badge && badge.textContent !== 'LIVE') {
+        badge.textContent = 'LIVE';
+        badge.className   = 'source-badge live';
+      }
+    };
+  }
+
+  refreshActiveTab();
+}
+
+// ─── BOOT ─────────────────────────────────────────────────────────────────────
+seedHistory();
+dummyTickInterval = setInterval(dummyTick, 500);
+switchTab('overview');
+window.addEventListener('resize', () => {
+  if (leafletMap) leafletMap.invalidateSize();
+  if (document.getElementById('plotCanvas') && activeFields.size > 0) render();
+  if (activeTab === 'lapanalysis') renderLapAnalysis();
+});
+</script>
+</body>
+</html>
