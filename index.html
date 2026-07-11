@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>UBC Solar · Telemetry</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="./lib/leaflet/leaflet.css">
 <link rel="stylesheet" href="./css/dashboard.css"
 </head>
 
@@ -291,10 +291,10 @@
   </div><!-- /.body-layout -->
 </div><!-- /.shell -->
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="./lib/leaflet/leaflet.js"></script>
 <script>
 if (typeof L === 'undefined') {
-  document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0d1b2a;font-family:'IBM Plex Mono',monospace;color:#f0f4f8;flex-direction:column;gap:16px;padding:32px;text-align:center"><div style="font-size:18px;font-weight:700;color:#c94f3e">Leaflet failed to load</div><div style="font-size:13px;color:#7a8fa3;max-width:400px;line-height:1.7">This page needs an internet connection to load Leaflet from <code style="color:#c9a84c">unpkg.com</code>.</div></div>`;
+  document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0d1b2a;font-family:'IBM Plex Mono',monospace;color:#f0f4f8;flex-direction:column;gap:16px;padding:32px;text-align:center"><div style="font-size:18px;font-weight:700;color:#c94f3e">(THIS IS AN OUT OF DATE ERROR MESSAGE)   Leaflet failed to load</div><div style="font-size:13px;color:#7a8fa3;max-width:400px;line-height:1.7">This page needs an internet connection to load Leaflet from <code style="color:#c9a84c">unpkg.com</code>.</div></div>`;
   throw new Error('Leaflet not loaded');
 }
 
