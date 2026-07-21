@@ -1,3 +1,14 @@
+// ─── CHECK LEAFLET CODE ───────────────────────────────────────────────────
+if (typeof L === 'undefined') {
+  document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0d1b2a;font-family:'IBM Plex Mono',monospace;color:#f0f4f8;flex-direction:column;gap:16px;padding:32px;text-align:center">
+    <div style="font-size:18px;font-weight:700;color:#c94f3e">Leaflet failed to load</div>
+    <div style="font-size:13px;color:#7a8fa3;max-width:400px;line-height:1.7">
+      lib/leaflet.js is missing or failed to load. Check that the file exists in your app's lib/ folder.
+    </div>
+  </div>`;
+  throw new Error('Leaflet not loaded');
+}
+
 // ─── DATA VIEW (Graph vs Map) ─────────────────────────────────────────────────
 let currentDataView = 'graph';
 
