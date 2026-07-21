@@ -333,4 +333,3 @@ function renderLapAnalysis() {
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 buildSidebar();
 
-// ── Seed 3 laps of historical data ──────────────────────────────────────────
