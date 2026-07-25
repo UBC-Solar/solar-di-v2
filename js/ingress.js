@@ -1,3 +1,5 @@
+const API_BASE_URL = "http://localhost:8000"  // TODO: currently dev url. create settings panel later
+
 // ─── SIGNAL DEFINITIONS ──────────────────────────────────────────────────────
 // Stages with color identities
 const STAGES = [
