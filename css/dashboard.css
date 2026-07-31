@@ -730,3 +730,21 @@ input[type=range] { flex:1; min-width:80px; accent-color:var(--gold); height:2px
 .source-badge.sim  { background:var(--navy5); color:var(--muted); border:1px solid var(--border); }
 .source-badge.car  { background:rgba(61,158,107,.15); color:#3d9e6b; border:1px solid rgba(61,158,107,.35); }
 .source-badge.live { background:rgba(201,168,75,.12); color:var(--gold); border:1px solid var(--gold-dim); }
+
+/* ── EVENT PICKER ── */
+.event-picker-wrap {
+  display:flex; align-items:center; gap:6px;
+  padding:0 12px; border-left:1px solid var(--border2);
+  height:100%;
+}
+.event-picker-wrap.hidden { display:none; }
+.event-picker-label {
+  font-family:var(--mono); font-size:10px; font-weight:500;
+  color:var(--muted); letter-spacing:.09em; text-transform:uppercase;
+}
+.event-select {
+  background:var(--navy3); border:1px solid var(--border2);
+  border-radius:1px; color:var(--text); font-family:var(--mono);
+  font-size:10px; padding:3px 6px; outline:none; cursor:pointer;
+}
+.event-select:focus { border-color:var(--gold); }

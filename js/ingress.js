@@ -2,7 +2,7 @@ const API_BASE_URL = "http://localhost:8000"  // TODO: currently dev url. create
 
 // ─── SIGNAL DEFINITIONS ──────────────────────────────────────────────────────
 // Stages with color identities
-const STAGES = [
+let STAGES = [
   { id:'ingress',      label:'Ingress',      color:'#60a5fa' },
   { id:'power',        label:'Power',        color:'#c94f3e' },
   { id:'energy',       label:'Energy',       color:'#3d9e6b' },
@@ -13,7 +13,7 @@ const STAGES = [
 ];
 
 // Full signal manifest — all 38 signals
-const SIGNALS = [
+let SIGNALS = [
   // ── Ingress ──
   { field:'TotalPackVoltage',    stage:'ingress',    label:'Pack Voltage',        unit:'V',    color:'#60a5fa', decimals:1, yMin:80,  yMax:160, help:'Voltage of the battery pack.' },
   { field:'AcceleratorPosition', stage:'ingress',    label:'Throttle Position',    unit:'',     color:'#60a5fa', decimals:2, yMin:0,   yMax:1,   help:'Decimal percentage (0–1) of accelerator position.' },
@@ -383,15 +383,7 @@ function setSource(src) {
     carBadge.className   = 'source-badge car';
     simBadge.textContent = 'OFF';
     simBadge.className   = 'source-badge sim';
-    if (!telemetryChannel) telemetryChannel = new BroadcastChannel('telemetry');
-    telemetryChannel.onmessage = (e) => {
-      ingest(e.data);
-      const badge = document.getElementById('srcCarBadge');
-      if (badge && badge.textContent !== 'LIVE') {
-        badge.textContent = 'LIVE';
-        badge.className   = 'source-badge live';
-      }
-    };
+    loadEvents();
   }
 
   refreshActiveTab();
