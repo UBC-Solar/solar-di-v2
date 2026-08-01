@@ -27,7 +27,7 @@ function renderOverview() {
   if (socFill) socFill.style.width = socPct !== null ? Math.max(0,Math.min(100,socPct)) + '%' : '0%';
 
   // Speed
-  const spd = ovLast('VehicleVelocity');
+  const spd = ovLast('VehicleVelocity'); //TODO: STATIC SIGNAL LOOKUPS (HERE AND ELSEWHERE IN FILE)
   const spdEl = document.getElementById('ovSpeed');
   if (spdEl) spdEl.textContent = fmt(spd, 1);
   ovSet('ovSpeedKmh', spd !== null ? (spd * 3.6).toFixed(1) : '—');

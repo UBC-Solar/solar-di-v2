@@ -115,7 +115,7 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function pushGPS(t, lat, lon) {
+function pushGPS(t, lat, lon) { //TODO: MAPPING NOT INTEGRATED WITH SUNBEAM
   const prev = gpsHistory[gpsHistory.length - 1];
   if (prev && haversineMeters(prev.lat, prev.lon, lat, lon) > GPS_TELEPORT_THRESHOLD_M) {
     // Car teleported — wipe history and start fresh from new position
@@ -350,7 +350,7 @@ function flushHistory() {
 
 // ── setSource — switches between SIM and CAR data feeds ──
 function setSource(src) {
-  if (src === dataSource) return;
+  if (src === dataSource) return; // if clickd button for mode we are already on, do nothing
   dataSource = src;
 
   const simBtn   = document.getElementById('srcSimBtn');
@@ -361,6 +361,7 @@ function setSource(src) {
   // Stop whatever is currently running
   if (dummyTickInterval) { clearInterval(dummyTickInterval); dummyTickInterval = null; }
   if (telemetryChannel)  { telemetryChannel.onmessage = null; }
+  disconnectStream()
 
   // Wipe all stale data from the previous source
   flushHistory();

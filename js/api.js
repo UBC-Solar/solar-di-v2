@@ -16,7 +16,7 @@ function apiSignalToSignal(s, colorMap) {
     unit: s.unit || '',
     color: colorMap[src] || PALETTE[0],
     decimals: 1,
-    yMin: 0,
+    yMin: 0, // TODO: GRAPHING YAXIS ISSUE
     yMax: 1,
     help: src ? `Source: ${src}` : '',
   };
@@ -76,4 +76,55 @@ async function onEventSelected(eventName) {
   });
 
   buildSidebar();
+  selectedEvent = eventName;
+  connectStream();
+}
+
+// ─── LIVE STREAM (SSE) ───────────────────────────────────────────────────────
+//TODO: integrate backfilling?
+
+let selectedEvent = null;
+let telemetrySource = null;
+
+function disconnectStream() {
+  if (telemetrySource) { telemetrySource.close(); telemetrySource = null; }
+}
+
+function connectStream() {
+  disconnectStream();
+  const names = SIGNALS.map(m => m.field);
+  if (!names.length) return;                              // signals= is required (422 if empty)
+
+  const url = `${API_BASE_URL}/events/${encodeURIComponent(selectedEvent)}/data/stream?signals=${names.join(',')}`;
+  // TODO: verify the pipeline sends Access-Control-Allow-Origin: * — this page is
+  // cross-origin (file:// → http://localhost:8000). If not, add CORS middleware
+  // server-side, or temporarily set webSecurity:false in main.js while testing.
+  const source = new EventSource(url);
+  telemetrySource = source;
+
+  source.addEventListener('meta', (e) => {
+    // Sent exactly once. signal_id/unit/frequency per signal — you already got
+    // units from GET /events/{event}/signals, so this is a sanity check.
+    console.log('[stream] meta', JSON.parse(e.data));
+  });
+
+  source.addEventListener('data', (e) => {
+    const batch = JSON.parse(e.data);
+    // Every subscribed signal is always present (empty arrays if nothing new).
+    for (const field of Object.keys(batch)) {
+      const { timestamps, values } = batch[field];
+      for (let i = 0; i < timestamps.length; i++) push(field, timestamps[i], values[i]);
+    }
+    const badge = document.getElementById('srcCarBadge');
+    if (badge && badge.textContent !== 'LIVE') { badge.textContent = 'LIVE'; badge.className = 'source-badge live'; }
+  });
+
+  source.onerror = () => {
+    // Do NOT write reconnect logic. EventSource retries automatically and sends
+    // the last id: back as Last-Event-ID; the server resumes with no gaps/dupes.
+    const badge = document.getElementById('srcCarBadge');
+    if (badge && badge.textContent !== 'STANDBY') {
+      badge.textContent = 'CONNECTING…'; badge.className = 'source-badge car';
+    }
+  };
 }
