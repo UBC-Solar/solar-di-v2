@@ -8,8 +8,6 @@ SIGNALS.forEach(m => {
   initialHistory[m.field] = []
   initialLatest[m.field] = { value: null, prev: null }
 })
-// LapIndexSpreadsheet is used for lap resolution but isn't in SIGNALS
-initialHistory['LapIndexSpreadsheet'] = []
 
 const state: TelemetryState = {
   signals: [...SIGNALS],
@@ -109,12 +107,6 @@ function pushGPS(t: number, lat: number, lon: number) { //TODO: MAPPING NOT INTE
 function ingest(data: TelemetryBatch) {
   const now = Date.now()
   state.signals.forEach(m => { if (data[m.field] !== undefined) push(m.field, now, data[m.field]!) })
-  if (data.LapIndexSpreadsheet !== undefined) {
-    const h = state.history['LapIndexSpreadsheet']
-    h.push({ t: now, v: data.LapIndexSpreadsheet })
-    const cut = now - MAX_MS
-    while (h.length && h[0].t < cut) h.shift()
-  }
   if (data.lat !== undefined && data.lon !== undefined) pushGPS(data.timestamp || now, data.lat, data.lon)
 }
 
@@ -123,7 +115,6 @@ function flushHistory() {
     state.history[m.field] = []
     state.latest[m.field] = { value: null, prev: null }
   })
-  state.history['LapIndexSpreadsheet'] = []
   state.gpsHistory.length = 0
   scheduleEmit()
 }
@@ -144,7 +135,7 @@ function replaceSignals(newSignals: SignalDef[], newStages: StageDef[]) {
   state.signals = newSignals
   state.stages = newStages
 
-  Object.keys(state.history).forEach(k => { if (k !== 'LapIndexSpreadsheet') delete state.history[k] })
+  Object.keys(state.history).forEach(k => delete state.history[k])
   state.signals.forEach(m => {
     state.history[m.field] = []
     state.latest[m.field] = { value: null, prev: null }

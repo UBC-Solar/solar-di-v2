@@ -53,7 +53,6 @@ export interface TelemetryBatch {
   timestamp?: number
   lat?: number
   lon?: number
-  LapIndexSpreadsheet?: number
   [field: string]: number | undefined
 }
 

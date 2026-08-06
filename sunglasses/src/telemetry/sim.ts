@@ -1,4 +1,3 @@
-import { MAX_MS } from './constants'
 import { getState, notifyNow, push, pushGPS, pushRawGps, pushRawPoint } from './store'
 
 export const WAYPOINTS: Array<[number, number]> = [
@@ -116,7 +115,7 @@ const ds: SimState = {
   PackPower: 5800, MotorPower: 5500,
   EnergyVOLExtrapolated: 2400, EnergyFromIntegratedPower: 2280,
   Efficiency1Hour: 280, Efficiency5Minute: 300, EfficiencyLap: 290,
-  LapIndex: 4, TrackIndex: 0.45, LapIndexSpreadsheet: 4,
+  LapIndex: 4, TrackIndex: 0.45,
   TrackDistSpreadsheet: 2268,
   AirTemperature: 28, DHI: 80, DNI: 650, GHI: 700,
   PrecipitationRate: 0, WindDirection: 180, WindSpeed: 3.5, Zenith: 42,
@@ -154,7 +153,6 @@ function dummyTick() {
   const completedLaps = Math.floor(elapsedMs / LAP_DURATION_MS)
   ds.LapIndex            = 4 + completedLaps // laps 4+ after seeded 1-3
   ds.TrackIndex          = (elapsedMs % LAP_DURATION_MS) / LAP_DURATION_MS
-  ds.LapIndexSpreadsheet = ds.LapIndex
   ds.TrackDistSpreadsheet = ds.TrackIndex * 5040
   // weather
   ds.AirTemperature      = w(ds.AirTemperature, 0.05, -10, 45)
@@ -174,10 +172,6 @@ function dummyTick() {
   pushGPS(now, pt[0], pt[1])
   const signals = getState().signals
   signals.forEach(sig => { if (ds[sig.field] !== undefined) push(sig.field, now, ds[sig.field]) })
-  const lapHist = getState().history['LapIndexSpreadsheet']
-  lapHist.push({ t: now, v: ds.LapIndexSpreadsheet })
-  const cut = Date.now() - MAX_MS
-  while (lapHist.length && lapHist[0].t < cut) lapHist.shift()
 }
 
 let dummyTickInterval: ReturnType<typeof setInterval> | null = null
@@ -203,7 +197,7 @@ function seedHistory() {
     PackPower: 6100, MotorPower: 5700,
     EnergyVOLExtrapolated: 2500, EnergyFromIntegratedPower: 2400,
     Efficiency1Hour: 285, Efficiency5Minute: 305, EfficiencyLap: 295,
-    LapIndex: 1, TrackIndex: 0.0, LapIndexSpreadsheet: 1,
+    LapIndex: 1, TrackIndex: 0.0,
     TrackDistSpreadsheet: 0,
     AirTemperature: 27.5, DHI: 78, DNI: 640, GHI: 695,
     PrecipitationRate: 0, WindDirection: 178, WindSpeed: 3.4, Zenith: 43,
@@ -213,7 +207,6 @@ function seedHistory() {
   const totalTicks = Math.floor((3 * LAP_DURATION_MS) / TICK_INTERVAL_MS)
   let wpSeed = 0
   const signals = getState().signals
-  const lapHist = getState().history['LapIndexSpreadsheet']
 
   for (let tick = 0; tick < totalTicks; tick++) {
     const t = now - (totalTicks - tick) * TICK_INTERVAL_MS
@@ -241,7 +234,6 @@ function seedHistory() {
     seed.EfficiencyLap       = sw(seed.EfficiencyLap, 5, 0, 800)
     seed.LapIndex            = lapNum
     seed.TrackIndex          = lapProgress
-    seed.LapIndexSpreadsheet = lapNum
     seed.TrackDistSpreadsheet = lapProgress * 5040
     seed.AirTemperature      = sw(seed.AirTemperature, 0.04, -10, 45)
     seed.DHI                 = sw(seed.DHI, 1.5, 0, 400)
@@ -260,7 +252,6 @@ function seedHistory() {
         pushRawPoint(sig.field, t, v)
       }
     })
-    lapHist.push({ t, v: seed.LapIndexSpreadsheet })
     const wp = WAYPOINTS[wpSeed % WAYPOINTS.length]; wpSeed++
     pushRawGps(t, wp[0], wp[1])
   }
