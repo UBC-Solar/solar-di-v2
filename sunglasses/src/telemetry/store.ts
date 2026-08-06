@@ -1,5 +1,5 @@
 import { GPS_TELEPORT_THRESHOLD_M, MAX_MS, SIGNALS, STAGES } from './constants'
-import type { DataSource, Latest, Point, SignalDef, SourceStatus, StageDef, TelemetryBatch, TelemetryState } from './types'
+import type { ApiEvent, DataSource, Latest, Point, SignalDef, SourceStatus, StageDef, TelemetryBatch, TelemetryState } from './types'
 
 // ─── STATE ───────────────────────────────────────────────────────────────────
 const initialHistory: Record<string, Point[]> = {}
@@ -12,6 +12,7 @@ SIGNALS.forEach(m => {
 const state: TelemetryState = {
   signals: [...SIGNALS],
   stages: [...STAGES],
+  events: [],
   history: initialHistory,
   latest: initialLatest,
   gpsHistory: [],
@@ -159,6 +160,11 @@ function setSelectedEvent(eventName: string) {
   scheduleEmit()
 }
 
+function setEvents(events: ApiEvent[]) {
+  state.events = [...events]
+  scheduleEmit()
+}
+
 // ─── ACTIVE FIELDS ───────────────────────────────────────────────────────────
 function setActiveFields(fields: string[]) {
   state.activeFields = [...fields].sort()
@@ -194,6 +200,7 @@ export {
   replaceSignals,
   setActiveFields,
   setDataSource,
+  setEvents,
   setSelectedEvent,
   setSourceStatus,
   subscribe,

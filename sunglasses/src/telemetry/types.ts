@@ -40,6 +40,7 @@ export type SourceStatus = 'sim' | 'standby' | 'connecting' | 'live'
 export interface TelemetryState {
   signals: SignalDef[]
   stages: StageDef[]
+  events: ApiEvent[]
   history: Record<string, Point[]>
   latest: Record<string, Latest>
   gpsHistory: GpsPoint[]
@@ -68,5 +69,14 @@ export interface ApiSignal {
 }
 
 export interface StreamBatch {
+  // Every subscribed signal is always present (empty arrays if nothing new).
+  // When present, the 'lat'/'lon' keys are GPS coordinates, not signals — they
+  // are routed to GPS history by api.ts.
   [field: string]: { timestamps: number[]; values: number[] }
+}
+
+export interface StreamGps {
+  timestamps: number[]
+  lat: number[]
+  lon: number[]
 }

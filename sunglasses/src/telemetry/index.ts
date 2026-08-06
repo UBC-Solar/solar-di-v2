@@ -7,6 +7,7 @@ import {
   loadEvents,
   onEventSelected,
 } from './api'
+import { SIGNALS, STAGES } from './constants'
 import { ensureSeeded, seedHistory, startSim, stopSim } from './sim'
 import {
   clearActiveFields,
@@ -16,19 +17,21 @@ import {
   ingest,
   push,
   pushGPS,
+  replaceSignals,
   setActiveFields,
   setDataSource,
+  setEvents,
   setSourceStatus,
   subscribe,
   toggleActiveField,
 } from './store'
-import type { DataSource, GpsPoint, Latest, SignalDef, StageDef, TelemetryState } from './types'
+import type { ApiEvent, DataSource, GpsPoint, Latest, SignalDef, StageDef, TelemetryState } from './types'
 
 // ─── REACT HOOKS ─────────────────────────────────────────────────────────────
 // Subscribe to the singleton store. Re-renders at most once per emit (one per
 // telemetry tick in sim mode). Canvas renderers should read getState() directly.
 function useTelemetry(): TelemetryState {
-  return useSyncExternalStore(subscribe, getSnapshot)
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }
 
 function useSignals(): SignalDef[] {
@@ -55,6 +58,10 @@ function useDataSource(): DataSource {
   return useTelemetry().dataSource
 }
 
+function useEvents(): ApiEvent[] {
+  return useTelemetry().events
+}
+
 function useSourceStatus(): TelemetryState['sourceStatus'] {
   return useTelemetry().sourceStatus
 }
@@ -72,6 +79,9 @@ function setSource(src: DataSource) {
   flushHistory()
 
   if (src === 'sim') {
+    // Car mode may have replaced the manifest via replaceSignals; restore the
+    // simulator's own signal set before reseeding.
+    replaceSignals([...SIGNALS], [...STAGES])
     setSourceStatus('sim')
     seedHistory()
     startSim()
@@ -107,12 +117,15 @@ export {
   push,
   pushGPS,
   setActiveFields,
+  setDataSource,
+  setEvents,
   setSource,
   setSourceStatus,
   shutdown,
   toggleActiveField,
   useActiveFields,
   useDataSource,
+  useEvents,
   useGpsHistory,
   useLatest,
   useSignals,
