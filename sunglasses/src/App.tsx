@@ -23,7 +23,7 @@ function App() {
     <div className="shell">
       <Header activeTab={tab} onTab={setTab} search={search} onSearch={setSearch} />
       <div className={`body-layout${sidebarOpen ? '' : ' sidebar-collapsed'}`}>
-        <Sidebar show={tab === 'data'} open={sidebarOpen} onToggle={() => setSidebarOpen(o => !o)} />
+        <Sidebar show={tab === 'data'} open={sidebarOpen} onToggle={() => setSidebarOpen(o => !o)} search={search} />
         <div id="mainContent">
           {tab === 'overview' && <OverviewTab />}
           {tab === 'data' && <DataTab />}
