@@ -1,6 +1,12 @@
 import type { SignalDef, StageDef } from './types'
 
-export const API_BASE_URL = 'http://localhost:8000' // TODO: currently dev url. create settings panel later
+// Default '' routes same-origin (dev: Vite proxies /events to Sunbeam via
+// vite.config.ts server.proxy). Set VITE_API_BASE at build time for a packaged
+// Electron app that must hit Sunbeam directly. TODO: settings panel later.
+export const API_BASE_URL =
+  typeof import.meta.env !== 'undefined' && import.meta.env.VITE_API_BASE
+    ? import.meta.env.VITE_API_BASE
+    : ''
 
 // Stages with color identities
 export const STAGES: StageDef[] = [
