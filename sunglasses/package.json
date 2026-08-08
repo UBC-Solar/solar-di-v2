@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@types/leaflet": "^1.9.22",
+    "leaflet": "^1.9.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
@@ -19,6 +21,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
+    "electron": "^43.3.0",
     "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
