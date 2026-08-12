@@ -19,7 +19,13 @@ const PRESETS = [
   { s: 600, label: '10m' },
 ]
 
-function DataTab() {
+export interface JumpRequest {
+  field: string
+  from: number
+  to: number
+}
+
+function DataTab({ jump }: { jump?: JumpRequest | null }) {
   const { signals, activeFields } = useTelemetry()
   const [staticMode, setStaticMode] = useState(false)
   const [windowSec, setWindowSec] = useState(60)
@@ -32,6 +38,21 @@ function DataTab() {
   const flashTimer = useRef(0)
 
   useEffect(() => () => window.clearTimeout(flashTimer.current), [])
+
+  // External jump request from the Calculations tab (mini-chart click): freeze
+  // the plot to the requested range and sync the datetime pickers. Applied
+  // during render (React's "adjusting state when a prop changes" pattern) to
+  // avoid cascading setState from an effect. App clears `jump` when the user
+  // switches tabs manually, so a stale range never re-applies on remount.
+  const [prevJump, setPrevJump] = useState<JumpRequest | null | undefined>(undefined)
+  if (jump && jump !== prevJump) {
+    setPrevJump(jump)
+    setStaticMode(true)
+    setStaticFrom(jump.from)
+    setStaticTo(jump.to)
+    setFromDraft(jump.from)
+    setToDraft(jump.to)
+  }
 
   const activeMetrics = activeFields
     .map(f => signals.find(s => s.field === f))
