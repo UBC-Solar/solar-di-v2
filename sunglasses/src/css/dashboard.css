@@ -301,6 +301,8 @@ header {
 /* tabs for calc */
 #dataTab { display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; }
 #dataTab.hidden { display:none; }
+#mapTab { display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; }
+#mapTab.hidden { display:none; }
 #calcTab { display:none; flex-direction:column; flex:1; min-height:0; overflow:hidden; }
 #calcTab.active { display:flex; }
 #mainArea { display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; }

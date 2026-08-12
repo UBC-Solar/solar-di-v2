@@ -66,9 +66,9 @@ async function onEventSelected(eventName: string) {
 let telemetrySource: EventSource | null = null
 
 // GPS coordinates may arrive either inside a `data` batch as lat/lon keys, or on
-// a dedicated `gps` SSE event. Both are routed to GPS history, not the signal
-// pipeline. TODO(step 6 map): confirm which shape Sunbeam actually sends when we
-// test against the real backend — the exact format is currently assumed.
+// a dedicated `gps` SSE event. Both are routed to GPS history (consumed by the
+// map tab), not the signal pipeline. TODO: confirm which shape Sunbeam actually
+// sends when we test against the real backend — the exact format is assumed.
 const GPS_KEYS = ['lat', 'lon']
 
 function extractGps(batch: StreamBatch): Array<{ t: number; lat: number; lon: number }> {
