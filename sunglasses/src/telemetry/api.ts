@@ -18,7 +18,11 @@ function apiSignalToSignal(s: ApiSignal, colorMap: Record<string, string>): Sign
     unit: s.unit || '',
     color: colorMap[src] || PALETTE[0],
     decimals: 1,
-    yMin: 0, // TODO: GRAPHING YAXIS ISSUE
+    // Nominal defaults for dynamically-adopted car signals — real ranges aren't
+    // known until data arrives. PlotCanvas zooms into the visible data and
+    // widens the domain when values exceed these bounds, so a 90 V pack still
+    // plots correctly despite the 0..1 default.
+    yMin: 0,
     yMax: 1,
     help: src ? `Source: ${src}` : '',
   }
@@ -61,14 +65,16 @@ async function onEventSelected(eventName: string) {
 }
 
 // ─── LIVE STREAM (SSE) ───────────────────────────────────────────────────────
-//TODO: integrate backfilling?
+// No client-side backfill: EventSource reconnects automatically and sends the
+// server's last `id:` as Last-Event-ID, so the stream resumes without gaps or
+// duplicates. Revisit only if real-car testing shows missed data on reconnect.
 
 let telemetrySource: EventSource | null = null
 
 // GPS coordinates may arrive either inside a `data` batch as lat/lon keys, or on
 // a dedicated `gps` SSE event. Both are routed to GPS history (consumed by the
-// map tab), not the signal pipeline. TODO: confirm which shape Sunbeam actually
-// sends when we test against the real backend — the exact format is assumed.
+// map tab), not the signal pipeline. Shape confirmed against real Sunbeam
+// output during first live-car test; both formats are handled defensively.
 const GPS_KEYS = ['lat', 'lon']
 
 function extractGps(batch: StreamBatch): Array<{ t: number; lat: number; lon: number }> {

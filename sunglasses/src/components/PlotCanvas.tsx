@@ -121,7 +121,12 @@ function PlotCanvas({ view, onWindow, onReset }: {
           const vs = pts.map(d => d.v)
           const lo = Math.min(...vs), hi = Math.max(...vs)
           const pad = (hi - lo) * .12 || .5
-          const clo = Math.max(m.yMin, lo - pad), chi = Math.min(m.yMax, hi + pad)
+          // Zoom into the visible data when it sits inside the manifest's nominal
+          // range; otherwise (e.g. car signals, whose dynamic yMin/yMax default to
+          // 0..1) widen the domain so the trace is never clamped off-screen.
+          const inside = lo >= m.yMin && hi <= m.yMax
+          const clo = inside ? Math.max(m.yMin, lo - pad) : Math.min(m.yMin, lo - pad)
+          const chi = inside ? Math.min(m.yMax, hi + pad) : Math.max(m.yMax, hi + pad)
           if (clo < chi) { yMin = clo; yMax = chi }
         }
         return { m, pts, yMin, yMax, yRange: (yMax - yMin) || 1 }

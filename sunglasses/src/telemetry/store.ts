@@ -88,7 +88,8 @@ function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number)
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-function pushGPS(t: number, lat: number, lon: number) { //TODO: MAPPING NOT INTEGRATED WITH SUNBEAM
+// GPS points flow to gpsHistory, consumed by the map tab (live marker + trace).
+function pushGPS(t: number, lat: number, lon: number) {
   const gps = state.gpsHistory
   const prev = gps[gps.length - 1]
   if (prev && haversineMeters(prev.lat, prev.lon, lat, lon) > GPS_TELEPORT_THRESHOLD_M) {
