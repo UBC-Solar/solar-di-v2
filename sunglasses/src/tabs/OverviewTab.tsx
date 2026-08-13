@@ -1,7 +1,9 @@
-import { useTelemetry } from '../telemetry'
+import { useOverviewMapping } from '../telemetry/overviewMapping'
+import type { OverviewKey } from '../telemetry/overviewMapping'
 
-// NOTE: Overview uses explicit field lookups (same as the old app). If a car
-// event's manifest omits a field the overview expects, that card shows '—'.
+// NOTE: Overview renders by mapping key (soc, speed, lap, …) resolved by
+// overviewMapping.ts against the current signal manifest. If an event's
+// manifest omits a key, its card shows '—' (plus one console warning).
 function fmt(v: number | null, dec: number): string {
   return v !== null && !isNaN(v) ? v.toFixed(dec) : '—'
 }
@@ -12,37 +14,34 @@ function powerFmt(v: number | null): string {
 }
 
 function OverviewTab() {
-  const { latest } = useTelemetry()
-  const val = (field: string): number | null => {
-    const l = latest[field]
-    return l && l.value !== null && l.value !== undefined ? l.value : null
-  }
+  const values = useOverviewMapping()
+  const val = (key: OverviewKey): number | null => values[key]
 
   // SOC
-  const socRaw = val('SOC')
+  const socRaw = val('soc')
   const socPct = socRaw !== null ? socRaw * 100 : null
   const socColor = socPct === null ? 'var(--text)' : socPct < 20 ? '#c94f3e' : socPct < 50 ? '#c9a84c' : '#3d9e6b'
 
   // Speed
-  const spd = val('VehicleVelocity')
+  const spd = val('speed')
 
   // Lap & Track
-  const lap = val('LapIndex')
-  const trackDist = val('TrackDistSpreadsheet')
-  const trackIdx = val('TrackIndex')
+  const lap = val('lap')
+  const trackDist = val('trackDist')
+  const trackIdx = val('trackIndex')
   const trackPct = trackIdx !== null ? Math.max(0, Math.min(100, trackIdx * 100)) : 0
 
   // Battery
-  const weakCell = val('VoltageofLeast')
+  const weakCell = val('weakCell')
   const weakCellColor = weakCell === null ? 'var(--text)' : weakCell < 3.0 ? '#c94f3e' : weakCell < 3.4 ? '#c9a84c' : '#3d9e6b'
 
   // Power
-  const pp = val('PackPower')
-  const mp = val('MotorPower')
+  const pp = val('packPower')
+  const mp = val('motorPower')
   const powerColor = (v: number | null) => v === null ? 'var(--text)' : v > 500 ? '#c94f3e' : v < -200 ? '#3d9e6b' : 'var(--muted)'
 
   // Drive state pills
-  const brake = val('MechBrakePressed')
+  const brake = val('brake')
   const regen = mp !== null && mp < -100
 
   return (
@@ -88,12 +87,12 @@ function OverviewTab() {
             <div className="ov-row-stats">
               <div className="ov-stat">
                 <div className="ov-stat-label">Voltage</div>
-                <div className="ov-stat-val" style={{ color: '#60a5fa' }}>{fmt(val('TotalPackVoltage'), 1)}</div>
+                <div className="ov-stat-val" style={{ color: '#60a5fa' }}>{fmt(val('packVoltage'), 1)}</div>
                 <div className="ov-stat-unit">V</div>
               </div>
               <div className="ov-stat">
                 <div className="ov-stat-label">Current</div>
-                <div className="ov-stat-val" style={{ color: '#60a5fa' }}>{fmt(val('PackCurrent'), 1)}</div>
+                <div className="ov-stat-val" style={{ color: '#60a5fa' }}>{fmt(val('packCurrent'), 1)}</div>
                 <div className="ov-stat-unit">A</div>
               </div>
               <div className="ov-stat">
@@ -131,17 +130,17 @@ function OverviewTab() {
             <div className="ov-row-stats">
               <div className="ov-stat">
                 <div className="ov-stat-label">GHI</div>
-                <div className="ov-stat-val" style={{ color: '#c9a84c' }}>{fmt(val('GHI'), 0)}</div>
+                <div className="ov-stat-val" style={{ color: '#c9a84c' }}>{fmt(val('ghi'), 0)}</div>
                 <div className="ov-stat-unit">W/m²</div>
               </div>
               <div className="ov-stat">
                 <div className="ov-stat-label">Eff 5-min</div>
-                <div className="ov-stat-val" style={{ color: '#a78bfa' }}>{fmt(val('Efficiency5Minute'), 0)}</div>
+                <div className="ov-stat-val" style={{ color: '#a78bfa' }}>{fmt(val('eff5'), 0)}</div>
                 <div className="ov-stat-unit">J/m</div>
               </div>
               <div className="ov-stat">
                 <div className="ov-stat-label">Eff 1-hr</div>
-                <div className="ov-stat-val" style={{ color: '#a78bfa' }}>{fmt(val('Efficiency1Hour'), 0)}</div>
+                <div className="ov-stat-val" style={{ color: '#a78bfa' }}>{fmt(val('eff1h'), 0)}</div>
                 <div className="ov-stat-unit">J/m</div>
               </div>
             </div>
@@ -153,22 +152,22 @@ function OverviewTab() {
             <div className="ov-row-stats">
               <div className="ov-stat">
                 <div className="ov-stat-label">Air Temp</div>
-                <div className="ov-stat-val" style={{ color: '#38bdf8' }}>{fmt(val('AirTemperature'), 1)}</div>
+                <div className="ov-stat-val" style={{ color: '#38bdf8' }}>{fmt(val('airTemp'), 1)}</div>
                 <div className="ov-stat-unit">°C</div>
               </div>
               <div className="ov-stat">
                 <div className="ov-stat-label">Wind</div>
-                <div className="ov-stat-val" style={{ color: '#38bdf8' }}>{fmt(val('WindSpeed'), 1)}</div>
+                <div className="ov-stat-val" style={{ color: '#38bdf8' }}>{fmt(val('windSpeed'), 1)}</div>
                 <div className="ov-stat-unit">m/s</div>
               </div>
               <div className="ov-stat">
                 <div className="ov-stat-label">Wind Dir</div>
-                <div className="ov-stat-val" style={{ color: '#38bdf8' }}>{fmt(val('WindDirection'), 0)}</div>
+                <div className="ov-stat-val" style={{ color: '#38bdf8' }}>{fmt(val('windDir'), 0)}</div>
                 <div className="ov-stat-unit">°</div>
               </div>
               <div className="ov-stat">
                 <div className="ov-stat-label">Zenith</div>
-                <div className="ov-stat-val" style={{ color: '#38bdf8' }}>{fmt(val('Zenith'), 0)}</div>
+                <div className="ov-stat-val" style={{ color: '#38bdf8' }}>{fmt(val('zenith'), 0)}</div>
                 <div className="ov-stat-unit">°</div>
               </div>
             </div>
