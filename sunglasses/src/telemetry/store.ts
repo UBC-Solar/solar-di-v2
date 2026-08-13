@@ -20,18 +20,25 @@ const state: TelemetryState = {
   dataSource: 'sim',
   sourceStatus: 'sim',
   selectedEvent: null,
+  dataVersion: 0,
 }
 
 // ─── SUBSCRIPTION ────────────────────────────────────────────────────────────
 // Mutations write into `state`; `scheduleEmit` coalesces notifications to a
-// microtask so a 38-signal tick produces exactly one React re-render.
+// microtask so a 38-signal tick produces exactly one React re-render. Each emit
+// cycle bumps dataVersion so derived-data hooks can react to data arrival.
 let snapshot: TelemetryState = { ...state }
 const listeners = new Set<() => void>()
 let emitScheduled = false
 
+function bumpVersion() {
+  state.dataVersion++
+}
+
 function scheduleEmit() {
   if (emitScheduled) return
   emitScheduled = true
+  bumpVersion()
   queueMicrotask(() => {
     emitScheduled = false
     snapshot = { ...state }
@@ -40,6 +47,7 @@ function scheduleEmit() {
 }
 
 function notifyNow() {
+  bumpVersion()
   snapshot = { ...state }
   listeners.forEach(l => l())
 }

@@ -21,9 +21,12 @@ interface LapPoint {
 }
 
 // ─── DATA PREP ───────────────────────────────────────────────────────────────
-// Group each signal's values by the lap number recorded at the same index in
-// LapIndex history. (All sim signals share timestamps, so index i in one
-// history corresponds to index i in another — same assumption as the old app.)
+// Group each signal's values by the lap that was in effect at each sample's
+// timestamp. The lap in effect at time t is the value of the latest LapIndex
+// sample with timestamp <= t (histories are time-sorted). Aligning by time —
+// rather than by array index — keeps grouping correct when signals stream at
+// different sample rates, as real Sunbeam data does; the simulator happens to
+// share timestamps, so it produces the same result as the old index pairing.
 // lapIndexField comes from the resolved CALC_MAPPING.lapIndex concept, so car
 // events that rename LapIndex still group correctly.
 function getLapData(
@@ -38,9 +41,13 @@ function getLapData(
   signals.forEach(sig => {
     const h = history[sig.field]
     if (!h || !h.length) return
-    const len = Math.min(h.length, lapIdxHistory.length)
-    for (let i = 0; i < len; i++) {
-      const lap = Math.round(lapIdxHistory[i].v)
+    // Walking pointer over the lap history; both arrays are time-sorted.
+    let li = 0
+    for (let i = 0; i < h.length; i++) {
+      const t = h[i].t
+      while (li + 1 < lapIdxHistory.length && lapIdxHistory[li + 1].t <= t) li++
+      if (lapIdxHistory[li].t > t) continue // no lap sample recorded yet at this time
+      const lap = Math.round(lapIdxHistory[li].v)
       if (lap < 1) continue
       if (!lapMap[lap]) lapMap[lap] = {}
       if (!lapMap[lap][sig.field]) lapMap[lap][sig.field] = { values: [], times: [] }
@@ -238,7 +245,7 @@ function LapChart({ sig, points }: {
 
 // ─── LAP ANALYSIS TAB ────────────────────────────────────────────────────────
 function LapAnalysisTab() {
-  const { signals, stages, history, dataSource } = useTelemetry()
+  const { signals, stages, history, dataSource, dataVersion } = useTelemetry()
 
   const [agg, setAgg] = useState<AggMode>('mean')
   const [field, setField] = useState('')
@@ -265,9 +272,10 @@ function LapAnalysisTab() {
   )
 
   const { lapMap, totalLaps } = useMemo(() => {
+    void dataVersion // recompute when new data arrives (history is mutated in place)
     const map = getLapData(signals, history, lapIndexField)
     return { lapMap: map, totalLaps: Object.keys(map).length }
-  }, [signals, history, lapIndexField])
+  }, [signals, history, lapIndexField, dataVersion])
 
   const { visiblePoints } = useMemo(() => {
     if (!field || !sig) return { visiblePoints: [] }
@@ -316,7 +324,9 @@ function LapAnalysisTab() {
   }, [sig, visiblePoints, agg, showTime, totalLaps])
 
   const noSelection = !field || !sig
-  const noLaps = !noSelection && visiblePoints.length < 1
+  const noLapData = !noSelection && !lapIndexField
+  const noLapsYet = !noSelection && !!lapIndexField && totalLaps < 1
+  const noLaps = !noSelection && !!lapIndexField && totalLaps >= 1 && visiblePoints.length < 1
 
   return (
     <div className="la-tab">
@@ -377,6 +387,20 @@ function LapAnalysisTab() {
           <div className="la-empty">
             <div className="plot-empty-hint">Select a metric above to compare lap averages</div>
             <div className="plot-empty-sub">Each dot = one lap · connected line shows trend</div>
+          </div>
+        )}
+
+        {noLapData && (
+          <div className="la-empty">
+            <div className="plot-empty-hint">No lap data in this event yet</div>
+            <div className="plot-empty-sub">Its signal manifest has no LapIndex. Lap analysis will populate once the car provides lap index telemetry.</div>
+          </div>
+        )}
+
+        {noLapsYet && (
+          <div className="la-empty">
+            <div className="plot-empty-hint">No laps recorded yet</div>
+            <div className="plot-empty-sub">Waiting for lap index data to arrive from the stream.</div>
           </div>
         )}
 

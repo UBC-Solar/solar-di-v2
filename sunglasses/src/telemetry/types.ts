@@ -48,6 +48,11 @@ export interface TelemetryState {
   dataSource: DataSource
   sourceStatus: SourceStatus
   selectedEvent: string | null
+  // Monotonic counter bumped once per emit cycle (coalesced pushes). React
+  // components use it as a dependency when they must recompute derived data on
+  // every telemetry update — e.g. the lap analysis tab's lap map, which has to
+  // pick up laps as they complete live.
+  dataVersion: number
 }
 
 export interface TelemetryBatch {
