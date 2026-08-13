@@ -312,7 +312,10 @@ function ResultsView({ results, openSections, onToggleSection, openStages, onTog
 }
 
 // ─── CALC TAB ────────────────────────────────────────────────────────────────
-function CalcTab({ onOpenInData }: { onOpenInData?: (field: string, from: number, to: number) => void }) {
+function CalcTab({ onOpenInData, active }: {
+  onOpenInData?: (field: string, from: number, to: number) => void
+  active?: boolean
+}) {
   const source = useDataSource()
 
   const [mode, setMode] = useState<'time' | 'lap'>('time')
@@ -495,7 +498,7 @@ function CalcTab({ onOpenInData }: { onOpenInData?: (field: string, from: number
   }
 
   return (
-    <div id="calcTab" className="active">
+    <div id="calcTab" className={active ? 'active' : ''}>
       <div className="calc-toolbar">
         <div className="calc-range-mode">
           <button className={`calc-mode-btn${mode === 'time' ? ' on' : ''}`} onClick={() => setMode('time')}>Time</button>

@@ -50,7 +50,7 @@ function App() {
           {tab === 'overview' && <OverviewTab />}
           {tab === 'data' && <DataTab jump={jump} />}
           {tab === 'map' && <MapTab />}
-          {tab === 'calc' && <CalcTab onOpenInData={openInDataTab} />}
+          <CalcTab onOpenInData={openInDataTab} active={tab === 'calc'} />
           {tab === 'lapanalysis' && <LapAnalysisTab />}
         </div>
       </div>
