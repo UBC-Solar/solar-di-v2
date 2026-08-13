@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { getState } from '../telemetry'
-import type { SignalDef } from '../telemetry/types'
+import { useTelemetry } from '../telemetry'
+import { CALC_MAPPING, resolveFields } from '../telemetry/signalMapping'
+import type { Point, SignalDef } from '../telemetry/types'
 
 // Port of js/lapanalysis.js. React owns the toolbar, stats row, and empty
 // states; the per-lap scatter/trend chart draws imperatively to canvas with a
-// hover tooltip (see the mount effect in LapChart).
+// hover tooltip (see the mount effect in LapChart). The tab is subscribed to
+// the store so the metric dropdown and lap map follow the live manifest;
+// switching source clears the selection until a metric is picked again.
 
 type AggMode = 'mean' | 'median' | 'max' | 'min'
 
@@ -21,14 +24,19 @@ interface LapPoint {
 // Group each signal's values by the lap number recorded at the same index in
 // LapIndex history. (All sim signals share timestamps, so index i in one
 // history corresponds to index i in another — same assumption as the old app.)
-function getLapData(): Record<number, Record<string, { values: number[]; times: number[] }>> {
-  const state = getState()
-  const lapIdxHistory = state.history['LapIndex']
+// lapIndexField comes from the resolved CALC_MAPPING.lapIndex concept, so car
+// events that rename LapIndex still group correctly.
+function getLapData(
+  signals: SignalDef[],
+  history: Record<string, Point[]>,
+  lapIndexField: string | null,
+): Record<number, Record<string, { values: number[]; times: number[] }>> {
+  const lapIdxHistory = lapIndexField ? history[lapIndexField] : undefined
   if (!lapIdxHistory || !lapIdxHistory.length) return {}
 
   const lapMap: Record<number, Record<string, { values: number[]; times: number[] }>> = {}
-  state.signals.forEach(sig => {
-    const h = state.history[sig.field]
+  signals.forEach(sig => {
+    const h = history[sig.field]
     if (!h || !h.length) return
     const len = Math.min(h.length, lapIdxHistory.length)
     for (let i = 0; i < len; i++) {
@@ -230,20 +238,36 @@ function LapChart({ sig, points }: {
 
 // ─── LAP ANALYSIS TAB ────────────────────────────────────────────────────────
 function LapAnalysisTab() {
+  const { signals, stages, history, dataSource } = useTelemetry()
+
   const [agg, setAgg] = useState<AggMode>('mean')
   const [field, setField] = useState('')
   const [lapFrom, setLapFrom] = useState('1')
   const [lapTo, setLapTo] = useState('999')
 
+  // Clear the selection when the source changes; the previous metric belongs
+  // to a manifest that may not exist anymore. (Adjusted during render, per
+  // React's "adjusting state when a prop changes".)
+  const [prevSource, setPrevSource] = useState(dataSource)
+  if (prevSource !== dataSource) {
+    setPrevSource(dataSource)
+    setField('')
+    setLapFrom('1')
+    setLapTo('999')
+  }
+
+  const calcFields = useMemo(() => resolveFields(signals, CALC_MAPPING), [signals])
+  const lapIndexField = calcFields['lapIndex'] ?? null
+
   const sig = useMemo(
-    () => getState().signals.find(s => s.field === field) ?? null,
-    [field],
+    () => signals.find(s => s.field === field) ?? null,
+    [signals, field],
   )
 
   const { lapMap, totalLaps } = useMemo(() => {
-    const map = getLapData()
+    const map = getLapData(signals, history, lapIndexField)
     return { lapMap: map, totalLaps: Object.keys(map).length }
-  }, [])
+  }, [signals, history, lapIndexField])
 
   const { visiblePoints } = useMemo(() => {
     if (!field || !sig) return { visiblePoints: [] }
@@ -301,8 +325,8 @@ function LapAnalysisTab() {
         <div className="la-metric-select-wrap">
           <select value={field} onChange={e => setField(e.target.value)}>
             <option value="">— pick a metric —</option>
-            {getState().stages.map(stage => {
-              const stageSignals = getState().signals.filter(s => s.stage === stage.id)
+            {stages.map(stage => {
+              const stageSignals = signals.filter(s => s.stage === stage.id)
               if (!stageSignals.length) return null
               return (
                 <optgroup key={stage.id} label={stage.label}>

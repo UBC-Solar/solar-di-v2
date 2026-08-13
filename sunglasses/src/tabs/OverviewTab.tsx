@@ -1,8 +1,8 @@
-import { useOverviewMapping } from '../telemetry/overviewMapping'
-import type { OverviewKey } from '../telemetry/overviewMapping'
+import { useOverviewMapping } from '../telemetry/signalMapping'
+import type { OverviewKey } from '../telemetry/signalMapping'
 
 // NOTE: Overview renders by mapping key (soc, speed, lap, …) resolved by
-// overviewMapping.ts against the current signal manifest. If an event's
+// signalMapping.ts against the current signal manifest. If an event's
 // manifest omits a key, its card shows '—' (plus one console warning).
 function fmt(v: number | null, dec: number): string {
   return v !== null && !isNaN(v) ? v.toFixed(dec) : '—'

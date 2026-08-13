@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { getState } from '../telemetry'
+import { getState, useDataSource } from '../telemetry'
+import { CALC_MAPPING, resolveFields } from '../telemetry/signalMapping'
 import type { Point, SignalDef } from '../telemetry/types'
 import DateTimePicker from '../components/DateTimePicker'
 
 // Port of js/calculations.js. React owns the toolbar and the collapsible
 // sections; the mini time-series graphs draw imperatively to canvas (see
-// MiniChart). Lap resolution uses LapIndex history — LapIndexSpreadsheet was
-// removed from the manifest during migration, so MapTab's lapToTimeRange and
-// the calc engine now share the same source.
+// MiniChart). Stats resolve through CALC_MAPPING against the live manifest at
+// Analyse time, so car events that rename or omit fields render '—' for the
+// missing stats instead of crashing. Switching source clears the results;
+// nothing is shown until Analyse is clicked again.
 
 // ─── ENGINE HELPERS ──────────────────────────────────────────────────────────
 function metricAt(hist: Point[] | undefined, t: number): number | null {
@@ -311,6 +313,8 @@ function ResultsView({ results, openSections, onToggleSection, openStages, onTog
 
 // ─── CALC TAB ────────────────────────────────────────────────────────────────
 function CalcTab({ onOpenInData }: { onOpenInData?: (field: string, from: number, to: number) => void }) {
+  const source = useDataSource()
+
   const [mode, setMode] = useState<'time' | 'lap'>('time')
   const [lapSingle, setLapSingle] = useState(false)
   const [lapFrom, setLapFrom] = useState('1')
@@ -330,6 +334,16 @@ function CalcTab({ onOpenInData }: { onOpenInData?: (field: string, from: number
   const [openSections, setOpenSections] = useState<Set<string>>(new Set(['summary']))
   const [openStages, setOpenStages] = useState<Set<string>>(new Set())
   const [results, setResults] = useState<CalcResults | null>(null)
+
+  // Wipe any stale results the moment the source changes; a car event's
+  // manifest is different from sim's, so the previous numbers would be wrong.
+  // (Adjusted during render, per React's "adjusting state when a prop changes".)
+  const [prevSource, setPrevSource] = useState(source)
+  if (prevSource !== source) {
+    setPrevSource(source)
+    setResults(null)
+    setStatus(null)
+  }
 
   useEffect(() => () => {
     window.clearTimeout(flashTimer.current)
@@ -362,6 +376,7 @@ function CalcTab({ onOpenInData }: { onOpenInData?: (field: string, from: number
 
   const runCalculations = () => {
     const state = getState()
+    const resolved = resolveFields(state.signals, CALC_MAPPING)
     let f: number, t: number
     let lapRangeUsed: { min: number; max: number } | null = null
 
@@ -370,7 +385,8 @@ function CalcTab({ onOpenInData }: { onOpenInData?: (field: string, from: number
       const lapB = lapSingle ? lapA : (parseInt(lapTo, 10) || lapA)
       const lapMin = Math.min(lapA, lapB), lapMax = Math.max(lapA, lapB)
 
-      const lapHist = state.history['LapIndex']
+      const lapField = resolved['lapIndex']
+      const lapHist = lapField ? state.history[lapField] : undefined
       if (!lapHist || !lapHist.length) {
         flashStatus('No lap data')
         return
@@ -400,18 +416,26 @@ function CalcTab({ onOpenInData }: { onOpenInData?: (field: string, from: number
     const hists: Record<string, Point[]> = {}
     state.signals.forEach(m => { hists[m.field] = state.history[m.field].filter(p => p.t >= f && p.t <= t) })
 
+    // Resolve a concept key to its manifest field's history points within the
+    // range; concepts the manifest can't provide resolve to [] (renders '—').
+    const histOf = (key: string): Point[] => {
+      const field = resolved[key]
+      return field ? (hists[field] ?? []) : []
+    }
+
     const durSec = (t - f) / 1000
-    const avgSpeed = average(hists['VehicleVelocity'], f, t)
-    const socStart = hists['SOC'].length ? hists['SOC'][0].v : null
-    const socEnd = hists['SOC'].length ? hists['SOC'][hists['SOC'].length - 1].v : null
+    const avgSpeed = average(histOf('speed'), f, t)
+    const socHist = histOf('soc')
+    const socStart = socHist.length ? socHist[0].v : null
+    const socEnd = socHist.length ? socHist[socHist.length - 1].v : null
     const deltaSoc = (socStart !== null && socEnd !== null) ? (socStart - socEnd) : null
-    const motorEnergyWh = integrate(hists['MotorPower'], f, t) / 3600
-    const packEnergyWh = integrate(hists['PackPower'], f, t) / 3600
-    const avgMotor = average(hists['MotorPower'], f, t)
-    const avgPack = average(hists['PackPower'], f, t)
-    const avgEff5 = average(hists['Efficiency5Minute'], f, t)
-    const avgEff1h = average(hists['Efficiency1Hour'], f, t)
-    const avgEffLap = average(hists['EfficiencyLap'], f, t)
+    const motorEnergyWh = integrate(histOf('motorPower'), f, t) / 3600
+    const packEnergyWh = integrate(histOf('packPower'), f, t) / 3600
+    const avgMotor = average(histOf('motorPower'), f, t)
+    const avgPack = average(histOf('packPower'), f, t)
+    const avgEff5 = average(histOf('eff5'), f, t)
+    const avgEff1h = average(histOf('eff1h'), f, t)
+    const avgEffLap = average(histOf('effLap'), f, t)
 
     let rangeLabel: string
     if (lapRangeUsed) {
@@ -425,18 +449,18 @@ function CalcTab({ onOpenInData }: { onOpenInData?: (field: string, from: number
 
     const lapRows: LapRow[] = []
     if (lapRangeUsed && lapRangeUsed.min !== lapRangeUsed.max) {
-      const lapHist = state.history['LapIndex']
+      const lapHist = histOf('lapIndex')
       for (let lap = lapRangeUsed.min; lap <= lapRangeUsed.max; lap++) {
         const pts = lapHist.filter(p => Math.round(p.v) === lap)
         if (!pts.length) continue
         const lf = pts[0].t, lt = pts[pts.length - 1].t
         const ldur = (lt - lf) / 1000
-        const lSocStart = metricAt(state.history['SOC'], lf)
-        const lSocEnd = metricAt(state.history['SOC'], lt)
+        const lSocStart = metricAt(histOf('soc'), lf)
+        const lSocEnd = metricAt(histOf('soc'), lt)
         const lDeltaSoc = (lSocStart !== null && lSocEnd !== null) ? (lSocStart - lSocEnd) * 100 : null
-        const lSpeed = average(state.history['VehicleVelocity'], lf, lt)
-        const lPower = average(state.history['PackPower'], lf, lt)
-        const lEff = average(state.history['EfficiencyLap'], lf, lt)
+        const lSpeed = average(histOf('speed'), lf, lt)
+        const lPower = average(histOf('packPower'), lf, lt)
+        const lEff = average(histOf('effLap'), lf, lt)
         lapRows.push({
           lap,
           durMin: ldur / 60,

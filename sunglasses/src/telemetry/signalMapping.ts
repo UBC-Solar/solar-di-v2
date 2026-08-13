@@ -2,14 +2,20 @@ import { useSyncExternalStore } from 'react'
 import { getSnapshot, subscribe } from './store'
 import type { SignalDef } from './types'
 
-// Overview mapping: defines, for each Overview card, the field names it accepts
-// from the current signal manifest. This is the single place aware of raw field
-// naming — OverviewTab renders by mapping key, never by raw names. Resolution
-// runs against the live manifest (state.signals), so event/source switches
-// re-resolve automatically. Names are tried in order (exact first, then
-// case-insensitive); the first hit wins. A key the manifest can't provide
+// Signal mapping: the single place that maps app-level concepts (an Overview
+// card, a Calculation stat, a lap index) to the field names accepted from the
+// current signal manifest. Tabs render by concept key, never by raw names.
+// Resolution runs against the live manifest (state.signals), so event/source
+// switches re-resolve automatically. Names are tried in order (exact first,
+// then case-insensitive); the first hit wins. A key the manifest can't provide
 // resolves to null, renders '—', and warns once.
 
+export interface SignalConcept {
+  key: string
+  names: readonly string[]
+}
+
+// ─── Concept tables ───────────────────────────────────────────────────────────
 export const OVERVIEW_MAPPING = [
   { key: 'soc',         names: ['SOC'] },
   { key: 'speed',       names: ['VehicleVelocity'] },
@@ -31,11 +37,23 @@ export const OVERVIEW_MAPPING = [
   { key: 'zenith',      names: ['Zenith'] },
 ] as const
 
-export type OverviewKey = (typeof OVERVIEW_MAPPING)[number]['key']
+export const CALC_MAPPING = [
+  { key: 'soc',        names: ['SOC'] },
+  { key: 'speed',      names: ['VehicleVelocity'] },
+  { key: 'motorPower', names: ['MotorPower'] },
+  { key: 'packPower',  names: ['PackPower'] },
+  { key: 'eff5',       names: ['Efficiency5Minute'] },
+  { key: 'eff1h',      names: ['Efficiency1Hour'] },
+  { key: 'effLap',     names: ['EfficiencyLap'] },
+  { key: 'lapIndex',   names: ['LapIndex'] },
+] as const
 
-// Warn once per mapping key while it stays missing; if it later resolves and
+export type OverviewKey = (typeof OVERVIEW_MAPPING)[number]['key']
+export type CalcKey = (typeof CALC_MAPPING)[number]['key']
+
+// Warn once per concept key while it stays missing; if it later resolves and
 // then disappears again, warn once more. Prevents console spam during live ticks.
-const warned = new Set<OverviewKey>()
+const warned = new Set<string>()
 
 function findField(signals: SignalDef[], names: readonly string[]): string | null {
   for (const name of names) {
@@ -48,10 +66,13 @@ function findField(signals: SignalDef[], names: readonly string[]): string | nul
   return null
 }
 
-function resolveFields(signals: SignalDef[]): Record<OverviewKey, string | null> {
+export function resolveFields(
+  signals: SignalDef[],
+  concepts: readonly SignalConcept[],
+): Record<string, string | null> {
   const available = signals.map(s => s.field)
-  const out = {} as Record<OverviewKey, string | null>
-  for (const c of OVERVIEW_MAPPING) {
+  const out: Record<string, string | null> = {}
+  for (const c of concepts) {
     const f = findField(signals, c.names)
     out[c.key] = f
     if (f) {
@@ -59,7 +80,7 @@ function resolveFields(signals: SignalDef[]): Record<OverviewKey, string | null>
     } else if (!warned.has(c.key)) {
       warned.add(c.key)
       console.warn(
-        `[overview] "${c.key}" has no matching signal (tried: ${c.names.join(', ')}). ` +
+        `[signalMapping] "${c.key}" has no matching signal (tried: ${c.names.join(', ')}). ` +
           `Available fields: ${available.join(', ') || '(none)'}`,
       )
     }
@@ -67,14 +88,21 @@ function resolveFields(signals: SignalDef[]): Record<OverviewKey, string | null>
   return out
 }
 
-export function useOverviewMapping(): Record<OverviewKey, number | null> {
+export function useConceptValues<T extends readonly SignalConcept[]>(
+  concepts: T,
+): Record<T[number]['key'], number | null> {
   const { signals, latest } = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
-  const fields = resolveFields(signals)
-  const out = {} as Record<OverviewKey, number | null>
-  for (const c of OVERVIEW_MAPPING) {
+  const fields = resolveFields(signals, concepts)
+  const out = {} as Record<T[number]['key'], number | null>
+  const outStr = out as Record<string, number | null>
+  for (const c of concepts) {
     const f = fields[c.key]
     const l = f ? latest[f] : undefined
-    out[c.key] = l && l.value !== null && l.value !== undefined ? l.value : null
+    outStr[c.key] = l && l.value !== null && l.value !== undefined ? l.value : null
   }
   return out
+}
+
+export function useOverviewMapping(): Record<OverviewKey, number | null> {
+  return useConceptValues(OVERVIEW_MAPPING)
 }
