@@ -39,15 +39,33 @@ async function fetchSignals(eventName: string): Promise<ApiSignal[]> {
 }
 
 async function loadEvents() {
+  const src = getState().dataSource
   const events = await fetchEvents()
   setEvents(events)
-  if (events.length === 1) onEventSelected(events[0].name)
+  if (getState().dataSource !== src) return // switched source mid-flight — ignore stale result
+  const { selectedEvent } = getState()
+  if (events.length === 1) {
+    onEventSelected(events[0].name)
+  } else if (selectedEvent && events.some(e => e.name === selectedEvent)) {
+    // Returning to Car mode: reconnect the previously selected event so the
+    // stream resumes without the user having to re-pick it in the dropdown.
+    onEventSelected(selectedEvent)
+  } else if (selectedEvent && !events.some(e => e.name === selectedEvent)) {
+    setSelectedEvent('') // remembered event no longer available — reset picker
+  }
 }
 
+// Monotonic token so a slower, stale fetchSignals never clobbers a newer event
+// selection (or a different source) that happened while it was in flight.
+let eventSelectionSeq = 0
+
 async function onEventSelected(eventName: string) {
+  const src = getState().dataSource
+  const seq = ++eventSelectionSeq
   console.log('Selected event:', eventName)
   if (!eventName) return
   const apiSignals = await fetchSignals(eventName)
+  if (getState().dataSource !== src || seq !== eventSelectionSeq) return
   console.log('Signals returned:', apiSignals)
   if (!apiSignals.length) return
 
