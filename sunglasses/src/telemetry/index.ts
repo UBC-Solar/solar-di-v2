@@ -29,7 +29,7 @@ import type { ApiEvent, DataSource, GpsPoint, Latest, SignalDef, StageDef, Telem
 
 // ─── REACT HOOKS ─────────────────────────────────────────────────────────────
 // Subscribe to the singleton store. Re-renders at most once per emit (one per
-// telemetry tick in sim mode). Canvas renderers should read getState() directly.
+// telemetry tick in sim mode).
 function useTelemetry(): TelemetryState {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }

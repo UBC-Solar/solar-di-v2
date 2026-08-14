@@ -53,6 +53,9 @@ export interface TelemetryState {
   // every telemetry update — e.g. the lap analysis tab's lap map, which has to
   // pick up laps as they complete live.
   dataVersion: number
+  // Latest emit time (ms epoch). The data plot uses it as its live "now" so
+  // the rolling window can advance during render without an impure Date.now().
+  nowMs: number
 }
 
 export interface TelemetryBatch {

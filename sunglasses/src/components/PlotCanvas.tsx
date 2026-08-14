@@ -1,13 +1,19 @@
-import { useEffect, useRef } from 'react'
-import { getState } from '../telemetry'
+import { useEffect, useMemo, useRef } from 'react'
+import type { TooltipComponentFormatterCallbackParams as TopLevelFormatterParams } from 'echarts'
+import type { EChartsType } from 'echarts/core'
+import type { EChartsCoreOption } from './EChart'
+import { EChart } from './EChart'
+import { useTelemetry } from '../telemetry'
 import { MAX_MS } from '../telemetry/constants'
-import type { SignalDef } from '../telemetry/types'
+import type { Point, SignalDef } from '../telemetry/types'
+import { CHART, TOOLTIP_CSS, fmtClock, fmtVal, hexToRgba } from './charts/theme'
 
-// Port of js/data.js. The chart renders imperatively to canvas in a rAF loop
-// that reads the store via getState() (no React re-render churn) plus a `view`
-// snapshot passed by the parent. Live mode redraws every frame; static mode
-// redraws only when the view object identity changes (useMemo in the parent) or
-// the canvas is resized.
+// Port of js/data.js, rendered through ECharts instead of a rAF canvas loop.
+// React builds the option declaratively (store-subscribed, one rebuild per emit
+// in live mode) and ECharts handles DPR/rendering/resize. All pan/zoom/touch
+// interactions are attached manually so the behaviour matches the original
+// canvas widget exactly (4%/notch wheel zoom pivoting at the cursor, 0.3× drag
+// pan, pinch, 5s–1h clamp, any pan/zoom freezes the window, dbl-click resets).
 
 export interface View {
   staticMode: boolean
@@ -19,65 +25,263 @@ export interface View {
 
 interface SeriesData {
   m: SignalDef
-  pts: { t: number; v: number }[]
+  pts: Point[]
   yMin: number
-  yRange: number
+  yMax: number
 }
 
-interface RenderState {
-  tStart: number
-  tEnd: number
-  tSpan: number
-  cX: number
-  cY: number
-  cW: number
-  cH: number
-  seriesData: SeriesData[]
-  isStatic: boolean
+// History is time-sorted; slice the visible window with two binary searches so
+// a 1-hour trace doesn't get re-scanned on every live tick.
+function sliceWindow(pts: Point[], f: number, t: number): Point[] {
+  if (!pts.length) return []
+  let lo = 0, hi = pts.length - 1
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    if (pts[mid].t < f) lo = mid + 1
+    else hi = mid - 1
+  }
+  const start = lo
+  let searchLo = start
+  let end = pts.length - 1
+  while (searchLo <= end) {
+    const mid = (searchLo + end) >> 1
+    if (pts[mid].t <= t) searchLo = mid + 1
+    else end = mid - 1
+  }
+  return pts.slice(start, end + 1)
 }
-
-const Y_AXIS_W = 44
-const PAD = { t: 12, b: 24, l: Math.min(Y_AXIS_W * 3, 140), r: 12 }
-const GRID = '#ffffff0a'
-const AXIS = '#ffffff18'
-const LABEL = '#7a8fa3'
-const FONT = '10px IBM Plex Mono,monospace'
 
 function PlotCanvas({ view, onWindow, onReset }: {
   view: View
   onWindow: (f: number, t: number) => void
   onReset: () => void
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const overlayRef = useRef<HTMLCanvasElement>(null)
-  const tooltipRef = useRef<HTMLDivElement>(null)
+  const { signals, history, nowMs } = useTelemetry()
 
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<EChartsType | null>(null)
+
+  // Refs are written in effects (not render) per react-hooks/refs; the DOM
+  // handlers read them, so updates land before the next interaction.
   const viewRef = useRef(view)
   const onWindowRef = useRef(onWindow)
   const onResetRef = useRef(onReset)
-
-  // Refs are written in effects (not render) per react-hooks/refs; the rAF loop
-  // reads them each frame, so updates land before the next draw.
   useEffect(() => { viewRef.current = view }, [view])
   useEffect(() => { onWindowRef.current = onWindow }, [onWindow])
   useEffect(() => { onResetRef.current = onReset }, [onReset])
 
-  const renderStateRef = useRef<RenderState | null>(null)
-  const dirtyRef = useRef(true)
-  const lastViewRef = useRef<View | null>(null)
+  // Live mode: the window rides along with the store's emit clock (`nowMs`
+  // bumps once per tick). Static mode: the window is fixed, so the memo stays
+  // stable and a frozen frame never rebuilds as new data keeps arriving.
+  const liveNow = view.staticMode ? (view.staticTo ?? nowMs) : nowMs
 
+  const win = useMemo(() => {
+    const v = view
+    if (v.staticMode && v.staticFrom && v.staticTo) return { f: v.staticFrom, t: v.staticTo, isStatic: true }
+    const t = liveNow
+    return { f: t - v.windowSec * 1000, t, isStatic: false }
+  }, [view, liveNow])
+
+  const chart = useMemo(() => {
+    const v = view
+    const fields = Array.from(v.activeFields)
+    const metrics = fields
+      .map(f => signals.find(x => x.field === f))
+      .filter((m): m is SignalDef => Boolean(m))
+    if (!metrics.length) return null
+
+    const { f, t } = win
+    const seriesData: SeriesData[] = metrics.map(m => {
+      const pts = sliceWindow(history[m.field], f, t)
+      let yMin = m.yMin, yMax = m.yMax
+      if (pts.length > 1) {
+        const vs = pts.map(d => d.v)
+        const lo = Math.min(...vs), hi = Math.max(...vs)
+        const pad = (hi - lo) * .12 || .5
+        // Zoom into the visible data when it sits inside the manifest's nominal
+        // range; otherwise (e.g. car signals, whose dynamic yMin/yMax default to
+        // 0..1) widen the domain so the trace is never clamped off-screen.
+        const inside = lo >= m.yMin && hi <= m.yMax
+        const clo = inside ? Math.max(m.yMin, lo - pad) : Math.min(m.yMin, lo - pad)
+        const chi = inside ? Math.min(m.yMax, hi + pad) : Math.max(m.yMax, hi + pad)
+        if (clo < chi) { yMin = clo; yMax = chi }
+      }
+      return { m, pts, yMin, yMax }
+    })
+
+    const count = seriesData.length
+    const gridLeft = Math.min(CHART.axisW * count, 140)
+    const areaAlpha = count > 1 ? 0.03 : 0.08
+
+    const meta = new Map<string, { unit: string; decimals: number; color: string }>()
+    seriesData.forEach(s => meta.set(s.m.label, { unit: s.m.unit, decimals: s.m.decimals, color: s.m.color }))
+
+    const series: unknown[] = seriesData.map((s, i) => ({
+      id: s.m.field,
+      name: s.m.label,
+      type: 'line',
+      xAxisIndex: 0,
+      yAxisIndex: i,
+      data: s.pts.map(p => [p.t, p.v]),
+      showSymbol: false,
+      symbol: 'circle',
+      symbolSize: 4,
+      animation: false,
+      lineStyle: { color: s.m.color, width: 1.5 },
+      itemStyle: { color: s.m.color },
+      areaStyle: { color: hexToRgba(s.m.color, areaAlpha) },
+      ...(s.yMin < 0 && s.yMax > 0
+        ? {
+            markLine: {
+              silent: true,
+              symbol: 'none',
+              animation: false,
+              lineStyle: { type: 'dashed', color: hexToRgba(s.m.color, 0.19), width: 1 },
+              label: { show: false },
+              data: [{ yAxis: 0 }],
+            },
+          }
+        : {}),
+    }))
+
+    // Live endpoint dot per series (a scatter riding the last sample).
+    if (!win.isStatic) {
+      seriesData.forEach((s, i) => {
+        const lp = s.pts[s.pts.length - 1]
+        if (!lp) return
+        series.push({
+          id: s.m.field + ':live',
+          name: s.m.label,
+          type: 'scatter',
+          xAxisIndex: 0,
+          yAxisIndex: i,
+          data: [[lp.t, lp.v]],
+          symbol: 'circle',
+          symbolSize: 7,
+          animation: false,
+          itemStyle: { color: s.m.color, borderColor: '#0d1b2a', borderWidth: 1.5 },
+          tooltip: { show: false },
+          z: 10,
+        })
+      })
+    }
+
+    const option = {
+      animation: false,
+      grid: {
+        left: gridLeft,
+        right: 12,
+        top: CHART.gridTop,
+        bottom: CHART.gridBottom,
+        containLabel: false,
+      },
+      xAxis: {
+        type: 'time',
+        min: f,
+        max: t,
+        axisLine: { lineStyle: { color: CHART.axis, width: 1 } },
+        axisTick: {
+          show: true,
+          length: 3,
+          lineStyle: { color: CHART.axis, width: 0.5 },
+        },
+        axisLabel: {
+          color: CHART.label,
+          fontFamily: CHART.font,
+          fontSize: CHART.fontSize,
+          formatter: (val: number) => {
+            if (win.isStatic) return fmtClock(val)
+            const s = Math.round((win.t - val) / 1000)
+            return s === 0 ? 'now' : `-${s}s`
+          },
+        },
+        splitLine: { show: false },
+      },
+      yAxis: seriesData.map((s, i) => ({
+        id: 'y' + s.m.field,
+        type: 'value',
+        position: 'left',
+        offset: i * CHART.axisW,
+        min: s.yMin,
+        max: s.yMax,
+        splitNumber: 5,
+        name: s.m.unit || '',
+        nameLocation: 'middle',
+        nameRotate: 90,
+        nameGap: 8,
+        nameTextStyle: {
+          color: hexToRgba(s.m.color, 0.6),
+          fontFamily: CHART.font,
+          fontSize: 9,
+        },
+        axisLine: { lineStyle: { color: hexToRgba(s.m.color, 0.38), width: 1.5 } },
+        axisTick: { show: false },
+        axisLabel: {
+          color: hexToRgba(s.m.color, 0.8),
+          fontFamily: CHART.font,
+          fontSize: CHART.fontSize,
+          formatter: (val: number) => fmtVal(val, s.m.decimals),
+        },
+        // Only the first axis draws split lines; the rest share the same grid.
+        splitLine: i === 0
+          ? { show: true, lineStyle: { color: CHART.grid, width: 0.5 } }
+          : { show: false },
+      })),
+      series,
+      tooltip: {
+        trigger: 'axis',
+        appendToBody: true,
+        confine: true,
+        backgroundColor: '#0c1622',
+        borderColor: 'rgba(255,255,255,.16)',
+        borderWidth: 1,
+        padding: 0,
+        textStyle: { color: '#d8e2ee', fontFamily: CHART.font, fontSize: 11 },
+        extraCssText: TOOLTIP_CSS,
+        axisPointer: {
+          type: 'line',
+          lineStyle: { color: 'rgba(255,255,255,.12)', type: 'dashed', width: 1 },
+        },
+        formatter: (params: TopLevelFormatterParams) => {
+          const arr = Array.isArray(params) ? params : [params]
+          if (!arr.length) return ''
+          const first = arr[0]
+          const time = Array.isArray(first.value) ? Number(first.value[0]) : win.t
+          const rows = arr.map(p => {
+            const md = meta.get(p.seriesName ?? '')
+            const val = Array.isArray(p.value) ? Number(p.value[1]) : Number(p.value)
+            const color = md?.color ?? p.color ?? '#d8e2ee'
+            return (
+              `<div style="display:flex;align-items:center;gap:7px;margin-top:4px">` +
+              `<span style="width:6px;height:6px;border-radius:1px;background:${color};flex-shrink:0"></span>` +
+              `<span style="color:#506070;font-size:10px;flex:1">${p.seriesName}</span>` +
+              `<span style="font-size:12px;font-weight:500;color:${color}">${fmtVal(val, md?.decimals ?? 1)}` +
+              `<span style="font-size:9px;color:#506070;margin-left:3px">${md?.unit ?? ''}</span></span></div>`
+            )
+          }).join('')
+          return (
+            `<div style="font-family:${CHART.font};font-size:11px;color:#d8e2ee;min-width:150px">` +
+            `<div style="font-size:9px;color:#506070;letter-spacing:.06em;margin-bottom:6px;text-transform:uppercase">${fmtClock(time)}</div>` +
+            rows +
+            `</div>`
+          )
+        },
+      },
+    } as EChartsCoreOption
+
+    return { option, showEmpty: count === 1 && seriesData[0].pts.length < 2 }
+  }, [signals, history, view, win])
+
+  // ── Interactions (ported 1:1 from the original canvas widget) ─────────────
   useEffect(() => {
-    const canvas = canvasRef.current
-    const overlay = overlayRef.current
-    const tooltip = tooltipRef.current
-    if (!canvas || !overlay || !tooltip) return
+    const el = wrapRef.current
+    if (!el) return
 
-    let raf = 0
     let dragStartX: number | null = null
     let dragStartWindow: { f: number; t: number } | null = null
     let lastTouches: { x: number; y: number }[] | null = null
 
-    const padL = () => Math.min(Y_AXIS_W * Math.max(getState().activeFields.length, 1), 140)
+    const padL = () => Math.min(CHART.axisW * Math.max(viewRef.current.activeFields.length, 1), 140)
 
     const getWindow = () => {
       const v = viewRef.current
@@ -86,156 +290,9 @@ function PlotCanvas({ view, onWindow, onReset }: {
       return { f: t - v.windowSec * 1000, t }
     }
 
-    const draw = () => {
-      const state = getState()
-      const v = viewRef.current
-      const fields = Array.from(v.activeFields)
-      if (fields.length === 0) return
-      const metrics = fields.map(f => state.signals.find(x => x.field === f)).filter((m): m is SignalDef => Boolean(m))
-      if (!metrics.length) return
-
-      const dpr = window.devicePixelRatio || 1
-      const W = canvas.offsetWidth, H = canvas.offsetHeight
-      if (!W || !H) return
-      canvas.width = W * dpr
-      canvas.height = H * dpr
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-      ctx.scale(dpr, dpr)
-
-      let tStart: number, tEnd: number
-      const isStatic = v.staticMode && !!v.staticFrom && !!v.staticTo
-      if (isStatic) { tStart = v.staticFrom!; tEnd = v.staticTo! }
-      else { tEnd = Date.now(); tStart = tEnd - v.windowSec * 1000 }
-      const tSpan = tEnd - tStart || 1
-
-      const cX = PAD.l, cY = PAD.t
-      const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b
-      ctx.clearRect(0, 0, W, H)
-      ctx.font = FONT
-
-      const seriesData = metrics.map(m => {
-        const pts = state.history[m.field].filter(d => d.t >= tStart && d.t <= tEnd)
-        let yMin = m.yMin, yMax = m.yMax
-        if (pts.length > 1) {
-          const vs = pts.map(d => d.v)
-          const lo = Math.min(...vs), hi = Math.max(...vs)
-          const pad = (hi - lo) * .12 || .5
-          // Zoom into the visible data when it sits inside the manifest's nominal
-          // range; otherwise (e.g. car signals, whose dynamic yMin/yMax default to
-          // 0..1) widen the domain so the trace is never clamped off-screen.
-          const inside = lo >= m.yMin && hi <= m.yMax
-          const clo = inside ? Math.max(m.yMin, lo - pad) : Math.min(m.yMin, lo - pad)
-          const chi = inside ? Math.min(m.yMax, hi + pad) : Math.max(m.yMax, hi + pad)
-          if (clo < chi) { yMin = clo; yMax = chi }
-        }
-        return { m, pts, yMin, yMax, yRange: (yMax - yMin) || 1 }
-      })
-
-      const toX = (t: number) => cX + ((t - tStart) / tSpan) * cW
-      const toY = (s: SeriesData, v: number) => cY + cH - ((v - s.yMin) / s.yRange) * cH
-
-      for (let i = 0; i <= 5; i++) {
-        const y = cY + cH - (i / 5) * cH
-        ctx.strokeStyle = GRID; ctx.lineWidth = .5
-        ctx.beginPath(); ctx.moveTo(cX, y); ctx.lineTo(cX + cW, y); ctx.stroke()
-      }
-
-      seriesData.forEach((s, idx) => {
-        const axX = PAD.l - Y_AXIS_W * (idx + 1)
-        ctx.font = FONT
-        for (let i = 0; i <= 5; i++) {
-          const v = s.yMin + (s.yRange / 5) * i
-          ctx.fillStyle = s.m.color + 'cc'
-          ctx.textAlign = 'right'; ctx.textBaseline = 'middle'
-          ctx.fillText(v.toFixed(s.m.decimals <= 1 ? 1 : 2), axX + Y_AXIS_W - 4, cY + cH - (i / 5) * cH)
-        }
-        ctx.strokeStyle = s.m.color + '60'; ctx.lineWidth = 1.5
-        ctx.beginPath(); ctx.moveTo(axX + Y_AXIS_W, cY); ctx.lineTo(axX + Y_AXIS_W, cY + cH); ctx.stroke()
-        ctx.save()
-        ctx.font = '9px IBM Plex Mono,monospace'
-        ctx.fillStyle = s.m.color + '99'
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-        ctx.translate(axX + 7, cY + cH / 2); ctx.rotate(-Math.PI / 2)
-        ctx.fillText(s.m.unit, 0, 0)
-        ctx.restore()
-      })
-
-      const xN = Math.max(2, Math.min(8, Math.floor(cW / 90)))
-      ctx.font = FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-      for (let i = 0; i <= xN; i++) {
-        const t = tStart + (i / xN) * tSpan
-        const x = toX(t)
-        let label: string
-        if (isStatic) {
-          const d = new Date(t)
-          label = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
-        } else {
-          const s = Math.round((tEnd - t) / 1000)
-          label = s === 0 ? 'now' : `-${s}s`
-        }
-        ctx.fillStyle = LABEL
-        ctx.fillText(label, x, cY + cH + 6)
-        ctx.strokeStyle = AXIS; ctx.lineWidth = .5
-        ctx.beginPath(); ctx.moveTo(x, cY + cH); ctx.lineTo(x, cY + cH + 3); ctx.stroke()
-      }
-
-      ctx.strokeStyle = AXIS; ctx.lineWidth = 1
-      ctx.beginPath(); ctx.moveTo(cX, cY); ctx.lineTo(cX, cY + cH); ctx.lineTo(cX + cW, cY + cH); ctx.stroke()
-
-      seriesData.forEach(s => {
-        const { m, pts, yMin, yRange } = s
-        if (pts.length < 2) {
-          if (seriesData.length === 1) {
-            ctx.fillStyle = LABEL; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-            ctx.font = '11px IBM Plex Mono,monospace'
-            ctx.fillText(isStatic ? 'No data in selected range' : 'Waiting for data…', cX + cW / 2, cY + cH / 2)
-          }
-          return
-        }
-        ctx.save(); ctx.beginPath(); ctx.rect(cX, cY, cW, cH); ctx.clip()
-        if (yMin < 0 && (yMin + yRange) > 0) {
-          const z = toY(s, 0)
-          ctx.strokeStyle = m.color + '30'; ctx.lineWidth = 1; ctx.setLineDash([4, 5])
-          ctx.beginPath(); ctx.moveTo(cX, z); ctx.lineTo(cX + cW, z); ctx.stroke(); ctx.setLineDash([])
-        }
-        ctx.beginPath(); ctx.moveTo(toX(pts[0].t), toY(s, pts[0].v))
-        pts.slice(1).forEach(p => ctx.lineTo(toX(p.t), toY(s, p.v)))
-        ctx.lineTo(toX(pts[pts.length - 1].t), cY + cH); ctx.lineTo(toX(pts[0].t), cY + cH)
-        ctx.closePath()
-        ctx.fillStyle = m.color + (seriesData.length > 1 ? '08' : '14'); ctx.fill()
-        ctx.beginPath(); ctx.moveTo(toX(pts[0].t), toY(s, pts[0].v))
-        pts.slice(1).forEach(p => ctx.lineTo(toX(p.t), toY(s, p.v)))
-        ctx.strokeStyle = m.color; ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke()
-        if (!isStatic) {
-          const lp = pts[pts.length - 1]
-          ctx.beginPath(); ctx.arc(toX(lp.t), toY(s, lp.v), 3.5, 0, Math.PI * 2)
-          ctx.fillStyle = m.color; ctx.fill()
-          ctx.strokeStyle = '#0d1b2a'; ctx.lineWidth = 1.5; ctx.stroke()
-        }
-        ctx.restore()
-      })
-
-      renderStateRef.current = { tStart, tEnd, tSpan, cX, cY, cW, cH, seriesData, isStatic }
-    }
-
-    const loop = () => {
-      raf = requestAnimationFrame(loop)
-      const v = viewRef.current
-      const needsDraw = !v.staticMode || v !== lastViewRef.current || dirtyRef.current
-      lastViewRef.current = v
-      dirtyRef.current = false
-      if (needsDraw) draw()
-    }
-    raf = requestAnimationFrame(loop)
-
-    const ro = new ResizeObserver(() => { dirtyRef.current = true })
-    ro.observe(canvas)
-
-    // ── Wheel zoom ───────────────────────────────────────────────────────────
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      const rect = canvas.getBoundingClientRect()
+      const rect = el.getBoundingClientRect()
       const cW = rect.width - padL() - 12
       const mouseX = e.clientX - rect.left - padL()
       const frac = Math.max(0, Math.min(1, mouseX / cW))
@@ -246,18 +303,18 @@ function PlotCanvas({ view, onWindow, onReset }: {
       const pivot = f + frac * span
       onWindowRef.current(pivot - frac * newSpan, pivot + (1 - frac) * newSpan)
     }
-    canvas.addEventListener('wheel', onWheel, { passive: false })
+    el.addEventListener('wheel', onWheel, { passive: false })
 
-    // ── Mouse pan ────────────────────────────────────────────────────────────
     const onMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return
       dragStartX = e.clientX
       dragStartWindow = getWindow()
-      canvas.classList.add('panning')
+      el.classList.add('panning')
+      chartRef.current?.dispatchAction({ type: 'hideTip' })
     }
     const onWindowMove = (e: MouseEvent) => {
       if (dragStartX === null) return
-      const rect = canvas.getBoundingClientRect()
+      const rect = el.getBoundingClientRect()
       const cW = rect.width - padL() - 12
       if (cW <= 0) return
       const dx = e.clientX - dragStartX
@@ -265,14 +322,16 @@ function PlotCanvas({ view, onWindow, onReset }: {
       const span = t - f
       const shift = -(dx / cW) * span * 0.3
       onWindowRef.current(f + shift, t + shift)
+      chartRef.current?.dispatchAction({ type: 'hideTip' })
     }
     const onWindowUp = () => {
-      dragStartX = null; dragStartWindow = null
-      canvas.classList.remove('panning')
+      dragStartX = null
+      dragStartWindow = null
+      el.classList.remove('panning')
     }
     const onDblClick = () => onResetRef.current()
-    canvas.addEventListener('mousedown', onMouseDown)
-    canvas.addEventListener('dblclick', onDblClick)
+    el.addEventListener('mousedown', onMouseDown)
+    el.addEventListener('dblclick', onDblClick)
     window.addEventListener('mousemove', onWindowMove)
     window.addEventListener('mouseup', onWindowUp)
 
@@ -286,7 +345,7 @@ function PlotCanvas({ view, onWindow, onReset }: {
       const touches = Array.from(e.touches).map(t => ({ x: t.clientX, y: t.clientY }))
       if (!lastTouches || touches.length !== lastTouches.length) { lastTouches = touches; return }
 
-      const rect = canvas.getBoundingClientRect()
+      const rect = el.getBoundingClientRect()
       const cW = rect.width - padL() - 12
       const { f, t } = getWindow()
       const span = t - f
@@ -309,116 +368,35 @@ function PlotCanvas({ view, onWindow, onReset }: {
       lastTouches = touches
     }
     const onTouchEnd = () => { lastTouches = null }
-    canvas.addEventListener('touchstart', onTouchStart, { passive: false })
-    canvas.addEventListener('touchmove', onTouchMove, { passive: false })
-    canvas.addEventListener('touchend', onTouchEnd)
-
-    // ── Tooltip crosshair ────────────────────────────────────────────────────
-    const syncOverlaySize = () => {
-      const dpr = window.devicePixelRatio || 1
-      const W = canvas.offsetWidth, H = canvas.offsetHeight
-      overlay.width = W * dpr; overlay.height = H * dpr
-      overlay.style.width = W + 'px'; overlay.style.height = H + 'px'
-    }
-
-    const drawCrosshair = (mouseX: number, mouseY: number) => {
-      const rs = renderStateRef.current
-      if (!rs) return
-      const dpr = window.devicePixelRatio || 1
-      syncOverlaySize()
-      const ctx2 = overlay.getContext('2d')
-      if (!ctx2) return
-      ctx2.clearRect(0, 0, overlay.width, overlay.height)
-
-      if (mouseX < rs.cX || mouseX > rs.cX + rs.cW || mouseY < rs.cY || mouseY > rs.cY + rs.cH) {
-        tooltip.style.display = 'none'
-        return
-      }
-
-      const tCursor = rs.tStart + ((mouseX - rs.cX) / rs.cW) * rs.tSpan
-
-      ctx2.save(); ctx2.scale(dpr, dpr)
-      ctx2.strokeStyle = '#ffffff18'; ctx2.lineWidth = 1; ctx2.setLineDash([4, 4])
-      ctx2.beginPath(); ctx2.moveTo(mouseX, rs.cY); ctx2.lineTo(mouseX, rs.cY + rs.cH); ctx2.stroke()
-      ctx2.setLineDash([])
-
-      const rows = rs.seriesData.map(s => {
-        const { m, pts, yMin, yRange } = s
-        if (!pts.length) return null
-        let lo = 0, hi = pts.length - 1
-        while (lo < hi) { const mid = (lo + hi) >> 1; if (pts[mid].t < tCursor) lo = mid + 1; else hi = mid }
-        const p = (lo > 0 && Math.abs(pts[lo - 1].t - tCursor) < Math.abs(pts[lo].t - tCursor)) ? pts[lo - 1] : pts[lo]
-        const toY = (v: number) => rs.cY + rs.cH - ((v - yMin) / yRange) * rs.cH
-        const px = rs.cX + ((p.t - rs.tStart) / rs.tSpan) * rs.cW
-        const py = toY(p.v)
-        ctx2.beginPath(); ctx2.arc(px, py, 7, 0, Math.PI * 2)
-        ctx2.fillStyle = m.color + '22'; ctx2.fill()
-        ctx2.beginPath(); ctx2.arc(px, py, 3.5, 0, Math.PI * 2)
-        ctx2.fillStyle = m.color; ctx2.fill()
-        ctx2.strokeStyle = '#0d1b2a'; ctx2.lineWidth = 1.5; ctx2.stroke()
-        return { m, p }
-      }).filter((r): r is { m: SignalDef; p: { t: number; v: number } } => r !== null)
-      ctx2.restore()
-
-      if (!rows.length) return
-      const d = new Date(rows[0].p.t)
-      const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
-      tooltip.innerHTML = `<div class="plot-tooltip-time">${timeStr}</div>` + rows.map(r =>
-        `<div class="plot-tooltip-row">
-          <span class="plot-tooltip-dot" style="background:${r.m.color}"></span>
-          <span class="plot-tooltip-label">${r.m.label}</span>
-          <span class="plot-tooltip-val" style="color:${r.m.color}">${r.p.v.toFixed(r.m.decimals <= 1 ? 1 : 2)}<span style="font-size:9px;color:var(--muted);margin-left:3px">${r.m.unit}</span></span>
-        </div>`
-      ).join('')
-
-      const wrap = canvas.parentElement
-      if (!wrap) return
-      const wRect = wrap.getBoundingClientRect()
-      const cRect = canvas.getBoundingClientRect()
-      const relX = mouseX + (cRect.left - wRect.left)
-      const relY = mouseY + (cRect.top - wRect.top)
-      const ttW = 180, ttH = 28 + rows.length * 26
-      const left = relX + 14 + ttW > wRect.width ? relX - ttW - 10 : relX + 14
-      const top = relY - ttH / 2 < 0 ? 4 : relY + ttH / 2 > wRect.height ? wRect.height - ttH - 4 : relY - ttH / 2
-      tooltip.style.left = left + 'px'
-      tooltip.style.top = top + 'px'
-      tooltip.style.display = 'block'
-    }
-
-    const onCanvasMove = (e: MouseEvent) => {
-      if (dragStartX !== null) return
-      const rect = canvas.getBoundingClientRect()
-      drawCrosshair(e.clientX - rect.left, e.clientY - rect.top)
-    }
-    const onCanvasLeave = () => {
-      const ctx2 = overlay.getContext('2d')
-      if (ctx2) ctx2.clearRect(0, 0, overlay.width, overlay.height)
-      tooltip.style.display = 'none'
-    }
-    canvas.addEventListener('mousemove', onCanvasMove)
-    canvas.addEventListener('mouseleave', onCanvasLeave)
+    el.addEventListener('touchstart', onTouchStart, { passive: false })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
+    el.addEventListener('touchend', onTouchEnd)
 
     return () => {
-      cancelAnimationFrame(raf)
-      ro.disconnect()
-      canvas.removeEventListener('wheel', onWheel)
-      canvas.removeEventListener('mousedown', onMouseDown)
-      canvas.removeEventListener('dblclick', onDblClick)
+      el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('mousedown', onMouseDown)
+      el.removeEventListener('dblclick', onDblClick)
       window.removeEventListener('mousemove', onWindowMove)
       window.removeEventListener('mouseup', onWindowUp)
-      canvas.removeEventListener('touchstart', onTouchStart)
-      canvas.removeEventListener('touchmove', onTouchMove)
-      canvas.removeEventListener('touchend', onTouchEnd)
-      canvas.removeEventListener('mousemove', onCanvasMove)
-      canvas.removeEventListener('mouseleave', onCanvasLeave)
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
     }
   }, [])
 
   return (
     <div className="canvas-wrap">
-      <canvas ref={canvasRef} id="plotCanvas"></canvas>
-      <canvas ref={overlayRef} id="plotOverlay"></canvas>
-      <div ref={tooltipRef} id="plotTooltip" className="plot-tooltip"></div>
+      <EChart
+        id="plotCanvas"
+        chartRef={chartRef}
+        divRef={wrapRef}
+        option={chart?.option ?? {}}  // placeholder; chart is always built for >=1 field
+      />
+      {chart?.showEmpty && (
+        <div className="plot-empty-overlay">
+          {win.isStatic ? 'No data in selected range' : 'Waiting for data…'}
+        </div>
+      )}
       <div className="chart-hint">scroll to zoom · drag to pan · dbl-click to reset</div>
     </div>
   )

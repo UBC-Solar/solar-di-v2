@@ -1,16 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { getState, useDataSource } from '../telemetry'
 import { CALC_MAPPING, resolveFields } from '../telemetry/signalMapping'
 import type { Point, SignalDef } from '../telemetry/types'
 import DateTimePicker from '../components/DateTimePicker'
+import { EChart } from '../components/EChart'
+import type { EChartsCoreOption } from '../components/EChart'
+import { CHART, fmtVal, hexToRgba } from '../components/charts/theme'
 
 // Port of js/calculations.js. React owns the toolbar and the collapsible
-// sections; the mini time-series graphs draw imperatively to canvas (see
-// MiniChart). Stats resolve through CALC_MAPPING against the live manifest at
-// Analyse time, so car events that rename or omit fields render '—' for the
-// missing stats instead of crashing. Switching source clears the results;
-// nothing is shown until Analyse is clicked again.
+// sections; the mini time-series graphs render through ECharts (see MiniChart).
+// Stats resolve through CALC_MAPPING against the live manifest at Analyse time,
+// so car events that rename or omit fields render '—' for the missing stats
+// instead of crashing. Switching source clears the results; nothing is shown
+// until Analyse is clicked again.
 
 // ─── ENGINE HELPERS ──────────────────────────────────────────────────────────
 function metricAt(hist: Point[] | undefined, t: number): number | null {
@@ -116,76 +119,76 @@ function CalcSection({ id, title, open, onToggle, children }: {
   )
 }
 
-function MiniChart({ m, pts, active, onOpen }: {
+function MiniChart({ m, pts, onOpen }: {
   m: SignalDef
   pts: Point[]
-  active: boolean
   onOpen: () => void
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-
-  // Redraws on mount and whenever the owning stage group becomes visible, so
-  // collapsed charts re-render at their real width once expanded.
-  useEffect(() => {
-    if (!active) return
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const dpr = window.devicePixelRatio || 1
-    const W = canvas.offsetWidth || 280, H = 120
-    canvas.width = W * dpr; canvas.height = H * dpr
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.scale(dpr, dpr)
-
-    const PAD = { t: 8, b: 20, l: 38, r: 8 }
-    const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b
-    const LABEL = '#7a8fa3', FONT = '9px IBM Plex Mono,monospace'
-    ctx.clearRect(0, 0, W, H)
-    if (pts.length < 2) {
-      ctx.fillStyle = LABEL
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.font = '10px IBM Plex Mono,monospace'
-      ctx.fillText('No data', PAD.l + cW / 2, PAD.t + cH / 2)
-      return
+  // ECharts re-lays out automatically on resize (ResizeObserver in the EChart
+  // wrapper), so collapsed stage groups render at their real width once
+  // expanded — the old canvas needed an explicit redraw there.
+  const { option, showEmpty } = useMemo(() => {
+    let yMin = 0, yMax = 1
+    if (pts.length) {
+      let lo = Infinity, hi = -Infinity
+      for (const p of pts) { if (p.v < lo) lo = p.v; if (p.v > hi) hi = p.v }
+      yMin = lo; yMax = hi
+      if (yMax - yMin < 1e-9) { yMin -= 1; yMax += 1 }
     }
-    const vs = pts.map(p => p.v)
-    const yMin = Math.min(...vs), yMax = Math.max(...vs), yRange = yMax - yMin || 1
-    const tA = pts[0].t, tB = pts[pts.length - 1].t, tSpan = tB - tA || 1
-    const toX = (t: number) => PAD.l + ((t - tA) / tSpan) * cW
-    const toY = (v: number) => PAD.t + cH - ((v - yMin) / yRange) * cH
+    const tA = pts.length ? pts[0].t : 0
+    const tB = pts.length ? pts[pts.length - 1].t : 1
+    const showSecs = tB - tA < 90000
 
-    ctx.strokeStyle = '#ffffff0a'; ctx.lineWidth = .5
-    for (let i = 0; i <= 4; i++) {
-      const y = PAD.t + (i / 4) * cH
-      ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + cW, y); ctx.stroke()
-    }
-    ctx.font = FONT; ctx.fillStyle = LABEL; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'
-    for (let i = 0; i <= 4; i++) {
-      const v = yMin + (yRange / 4) * (4 - i)
-      ctx.fillText(v.toFixed(m.decimals <= 1 ? 1 : 2), PAD.l - 3, PAD.t + (i / 4) * cH)
-    }
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    const xN = Math.min(4, Math.max(1, Math.floor(cW / 55)))
-    const showSecs = tSpan < 90000
-    for (let i = 0; i <= xN; i++) {
-      const tt = tA + (i / xN) * tSpan
-      const d = new Date(tt)
-      const lbl = showSecs
-        ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
-        : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-      ctx.fillText(lbl, toX(tt), PAD.t + cH + 3)
-    }
-    ctx.strokeStyle = '#ffffff18'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t + cH); ctx.lineTo(PAD.l + cW, PAD.t + cH); ctx.stroke()
-
-    ctx.beginPath(); ctx.moveTo(toX(pts[0].t), toY(pts[0].v))
-    pts.slice(1).forEach(p => ctx.lineTo(toX(p.t), toY(p.v)))
-    ctx.lineTo(toX(pts[pts.length - 1].t), PAD.t + cH); ctx.lineTo(toX(pts[0].t), PAD.t + cH)
-    ctx.closePath(); ctx.fillStyle = m.color + '18'; ctx.fill()
-    ctx.beginPath(); ctx.moveTo(toX(pts[0].t), toY(pts[0].v))
-    pts.slice(1).forEach(p => ctx.lineTo(toX(p.t), toY(p.v)))
-    ctx.strokeStyle = m.color; ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke()
-  }, [m, pts, active])
+    const option = {
+      animation: false,
+      grid: { left: 40, right: 8, top: 8, bottom: 20 },
+      xAxis: {
+        type: 'time',
+        min: tA,
+        max: tB,
+        axisLine: { lineStyle: { color: CHART.axis, width: 1 } },
+        axisTick: { show: false },
+        axisLabel: {
+          color: CHART.label,
+          fontFamily: CHART.font,
+          fontSize: CHART.fontSmall,
+          formatter: (val: number) => {
+            const d = new Date(val)
+            const pad = (n: number) => String(n).padStart(2, '0')
+            return showSecs
+              ? `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+              : `${pad(d.getHours())}:${pad(d.getMinutes())}`
+          },
+        },
+        splitLine: { show: false },
+      },
+      yAxis: {
+        type: 'value',
+        min: yMin,
+        max: yMax,
+        splitNumber: 4,
+        axisLine: { lineStyle: { color: CHART.axis, width: 1 } },
+        axisTick: { show: false },
+        axisLabel: {
+          color: CHART.label,
+          fontFamily: CHART.font,
+          fontSize: CHART.fontSmall,
+          formatter: (val: number) => fmtVal(val, m.decimals),
+        },
+        splitLine: { show: true, lineStyle: { color: CHART.grid, width: 0.5 } },
+      },
+      series: [{
+        type: 'line',
+        data: pts.map(p => [p.t, p.v]),
+        showSymbol: false,
+        animation: false,
+        lineStyle: { color: m.color, width: 1.5 },
+        itemStyle: { color: m.color },
+        areaStyle: { color: hexToRgba(m.color, 0.09) },
+      }],
+    } as EChartsCoreOption
+    return { option, showEmpty: pts.length < 2 }
+  }, [m, pts])
 
   return (
     <div
@@ -200,7 +203,10 @@ function MiniChart({ m, pts, active, onOpen }: {
         <span style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 'auto' }}>{m.unit}</span>
         <span className="mini-chart-goto">↗</span>
       </div>
-      <canvas ref={canvasRef} className="mini-chart-canvas" width="280" height="120"></canvas>
+      <div className="mini-chart-canvas" style={{ position: 'relative' }}>
+        <EChart className="mini-chart-fill" option={option} />
+        {showEmpty && <div className="mini-chart-empty">No data</div>}
+      </div>
     </div>
   )
 }
@@ -215,7 +221,22 @@ function ResultsView({ results, openSections, onToggleSection, openStages, onTog
   onOpenInData?: (field: string, from: number, to: number) => void
 }) {
   const { signals, stages } = getState()
-  const hists = getState().history
+
+  // Stable per-field windows so MiniChart's option memo doesn't recompute on
+  // every ResultsView render (an inline .filter() would allocate a fresh array
+  // each time). Keyed on the results object, so the graphs freeze at what was
+  // analysed — the live history keeps growing behind it.
+  const fieldPts = useMemo(() => {
+    const { signals: sigs } = getState()
+    const hists = getState().history
+    const map = new Map<string, Point[]>()
+    sigs.forEach(s => {
+      const h = hists[s.field]
+      if (!h) return
+      map.set(s.field, h.filter(p => p.t >= results.from && p.t <= results.to))
+    })
+    return map
+  }, [results])
 
   const durMin = results.durSec / 60
   const socStartPct = results.socStart !== null ? results.socStart * 100 : null
@@ -295,8 +316,7 @@ function ResultsView({ results, openSections, onToggleSection, openStages, onTog
                       <MiniChart
                         key={sig.field}
                         m={sig}
-                        pts={hists[sig.field].filter(p => p.t >= results.from && p.t <= results.to)}
-                        active={isOpen}
+                        pts={fieldPts.get(sig.field) ?? []}
                         onOpen={() => onOpenInData?.(sig.field, results.from, results.to)}
                       />
                     ))}

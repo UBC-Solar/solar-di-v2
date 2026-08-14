@@ -366,24 +366,10 @@ header {
   font-size: 10px; color: var(--muted); line-height: 1.4; min-width: 0;
 }
 
-/* canvas */
+/* plot */
 .canvas-wrap { flex:1; position:relative; min-height:0; }
 #plotCanvas { position:absolute; inset:0; width:100%; height:100%; cursor:grab; }
 #plotCanvas.panning { cursor:grabbing; }
-#plotOverlay { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
-.plot-tooltip {
-  position:absolute; display:none; pointer-events:none;
-  background:var(--navy2); border:1px solid var(--border3);
-  padding:8px 12px; font-family:var(--mono); font-size:11px;
-  color:var(--text); white-space:nowrap; z-index:10;
-  box-shadow:0 4px 16px rgba(0,0,0,.5);
-  min-width:140px;
-}
-.plot-tooltip-time { font-size:9px; color:var(--muted); letter-spacing:.06em; margin-bottom:6px; text-transform:uppercase; }
-.plot-tooltip-row { display:flex; align-items:center; gap:7px; margin-top:4px; }
-.plot-tooltip-dot { width:6px; height:6px; border-radius:1px; flex-shrink:0; }
-.plot-tooltip-label { color:var(--muted); font-size:10px; flex:1; }
-.plot-tooltip-val { font-size:12px; font-weight:500; }
 .export-btn {
   display:flex; align-items:center; gap:5px;
   background:transparent; border:1px solid var(--border2); border-radius:1px;
@@ -394,6 +380,10 @@ header {
 .export-btn:hover:not(:disabled) { color:var(--gold); border-color:var(--gold-dim); background:var(--gold-bg); }
 .export-btn:disabled { opacity:.3; cursor:not-allowed; }
 .chart-hint { position:absolute; bottom:30px; right:12px; font-family:var(--mono); font-size:9px; color:var(--muted); opacity:.5; pointer-events:none; letter-spacing:.05em; }
+.plot-empty-overlay {
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-size:11px; color:var(--muted); pointer-events:none; z-index:5;
+}
 
 /* ── STATIC MODE CONTROLS ── */
 .mode-toggle {
@@ -627,6 +617,11 @@ input[type=range] { flex:1; min-width:80px; accent-color:var(--gold); height:2px
 .mini-chart-goto { font-size:10px; color:var(--muted); opacity:0; transition:opacity .15s; margin-left:2px; }
 .mini-chart-card:hover .mini-chart-goto { opacity:1; }
 .mini-chart-canvas { display:block; width:100%; height:120px; }
+.mini-chart-fill { position:absolute; inset:0; width:100%; height:100%; }
+.mini-chart-empty {
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-size:10px; color:var(--muted); pointer-events:none;
+}
 
 /* ── LAP ANALYSIS TAB ── */
 .la-tab {

@@ -21,6 +21,7 @@ const state: TelemetryState = {
   sourceStatus: 'sim',
   selectedEvent: null,
   dataVersion: 0,
+  nowMs: Date.now(),
 }
 
 // ─── SUBSCRIPTION ────────────────────────────────────────────────────────────
@@ -33,6 +34,7 @@ let emitScheduled = false
 
 function bumpVersion() {
   state.dataVersion++
+  state.nowMs = Date.now()
 }
 
 function scheduleEmit() {

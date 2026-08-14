@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTelemetry } from '../telemetry'
 import { CALC_MAPPING, resolveFields } from '../telemetry/signalMapping'
 import type { Point, SignalDef } from '../telemetry/types'
+import { EChart } from '../components/EChart'
+import type { EChartsCoreOption } from '../components/EChart'
+import { CHART, TOOLTIP_CSS, fmtVal, hexToRgba } from '../components/charts/theme'
+import type { DefaultLabelFormatterCallbackParams as CallbackDataParams } from 'echarts'
 
 // Port of js/lapanalysis.js. React owns the toolbar, stats row, and empty
-// states; the per-lap scatter/trend chart draws imperatively to canvas with a
-// hover tooltip (see the mount effect in LapChart). The tab is subscribed to
-// the store so the metric dropdown and lap map follow the live manifest;
-// switching source clears the selection until a metric is picked again.
+// states; the per-lap scatter/trend chart renders through ECharts (see
+// LapChart). The tab is subscribed to the store so the metric dropdown and lap
+// map follow the live manifest; switching source clears the selection until a
+// metric is picked again.
 
 type AggMode = 'mean' | 'median' | 'max' | 'min'
 
@@ -98,147 +102,120 @@ function LapChart({ sig, points }: {
   sig: SignalDef
   points: LapPoint[]
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const tooltipRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    const tooltip = tooltipRef.current
-    if (!canvas || !tooltip) return
-
-    const dpr = window.devicePixelRatio || 1
-    const W = canvas.offsetWidth, H = canvas.offsetHeight
-    if (!W || !H) return
-    canvas.width = W * dpr; canvas.height = H * dpr
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.scale(dpr, dpr)
-
-    const PAD = { t: 28, b: 48, l: 64, r: 28 }
-    const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b
-    const FONT = '11px IBM Plex Mono,monospace'
-    const LABEL = '#7a8fa3'
-
-    ctx.clearRect(0, 0, W, H)
-
+  const option = useMemo<EChartsCoreOption>(() => {
     const vals = points.map(p => p.agg)
     const yMin = Math.min(...vals), yMax = Math.max(...vals)
     const yRange = yMax - yMin || 1
     const yPad = yRange * 0.15
     const yLo = yMin - yPad, yHi = yMax + yPad
-
-    const lapNums = points.map(p => p.lap)
-    const xMin = Math.min(...lapNums), xMax = Math.max(...lapNums)
-    const xRange = xMax - xMin || 1
-
-    const toX = (l: number) => PAD.l + ((l - xMin) / xRange) * cW
-    const toY = (v: number) => PAD.t + cH - ((v - yLo) / (yHi - yLo)) * cH
-
-    // Grid
-    ctx.strokeStyle = '#ffffff0a'; ctx.lineWidth = 0.5
-    for (let i = 0; i <= 5; i++) {
-      const y = PAD.t + (i / 5) * cH
-      ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + cW, y); ctx.stroke()
-    }
-
-    // Y axis labels
-    ctx.font = FONT; ctx.fillStyle = LABEL; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'
-    for (let i = 0; i <= 5; i++) {
-      const v = yHi - (i / 5) * (yHi - yLo)
-      const y = PAD.t + (i / 5) * cH
-      ctx.fillText(v.toFixed(sig.decimals <= 1 ? 1 : 2), PAD.l - 8, y)
-    }
-
-    // Y axis unit label (rotated)
-    ctx.save()
-    ctx.translate(14, PAD.t + cH / 2)
-    ctx.rotate(-Math.PI / 2)
-    ctx.font = '10px IBM Plex Mono,monospace'; ctx.fillStyle = LABEL; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText(sig.unit || '', 0, 0)
-    ctx.restore()
-
-    // X axis labels
-    ctx.font = FONT; ctx.fillStyle = LABEL; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    points.forEach(p => {
-      ctx.fillText('Lap ' + p.lap, toX(p.lap), PAD.t + cH + 8)
-    })
-
-    // Axes
-    ctx.strokeStyle = '#ffffff18'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t + cH); ctx.lineTo(PAD.l + cW, PAD.t + cH); ctx.stroke()
-
-    // Connected trend line
-    if (points.length >= 2) {
-      ctx.beginPath()
-      ctx.moveTo(toX(points[0].lap), toY(points[0].agg))
-      points.slice(1).forEach(p => ctx.lineTo(toX(p.lap), toY(p.agg)))
-      ctx.strokeStyle = sig.color + '80'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.setLineDash([6, 3])
-      ctx.stroke(); ctx.setLineDash([])
-    }
-
-    // Scatter dots with glow + value labels
-    points.forEach(p => {
-      const x = toX(p.lap), y = toY(p.agg)
-      ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2)
-      ctx.fillStyle = sig.color + '18'; ctx.fill()
-      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2)
-      ctx.fillStyle = sig.color; ctx.fill()
-      ctx.strokeStyle = '#ffffff30'; ctx.lineWidth = 1.5; ctx.stroke()
-      ctx.font = '11px IBM Plex Mono,monospace'; ctx.fillStyle = sig.color
-      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-      ctx.fillText(p.agg.toFixed(sig.decimals <= 1 ? 1 : 2), x, y - 10)
-    })
-
-    // Hover tooltip
-    const hitData = points.map(p => ({ x: toX(p.lap), y: toY(p.agg), point: p }))
     const dec = sig.decimals <= 1 ? 1 : 2
 
-    const onMove = (e: MouseEvent) => {
-      const rect = canvas.getBoundingClientRect()
-      const mx = e.clientX - rect.left
-      const my = e.clientY - rect.top
-      const HIT_RADIUS = 18
-      let closest: { x: number; y: number; point: LapPoint } | null = null
-      let closestDist = Infinity
-      for (const h of hitData) {
-        const d = Math.sqrt((mx - h.x) ** 2 + (my - h.y) ** 2)
-        if (d < HIT_RADIUS && d < closestDist) { closest = h; closestDist = d }
-      }
-      if (!closest) { tooltip.style.display = 'none'; canvas.style.cursor = ''; return }
-      canvas.style.cursor = 'crosshair'
-      const timeStr = closest.point.extremeT
-        ? `<div style="color:var(--muted);margin-top:3px">${fmtExtremeTime(closest.point.extremeT)}</div>`
-        : ''
-      tooltip.innerHTML =
-        `<span style="color:var(--muted)">Lap </span><span style="color:${sig.color};font-weight:600">${closest.point.lap}</span>` +
-        `<span style="color:var(--border3)"> · </span><span style="color:${sig.color};font-weight:600">${closest.point.agg.toFixed(dec)}</span>` +
-        `<span style="color:var(--muted)"> ${sig.unit}</span>${timeStr}`
-      const wrap = canvas.parentElement
-      if (!wrap) return
-      const wrapRect = wrap.getBoundingClientRect()
-      let tx = e.clientX - wrapRect.left + 14
-      let ty = e.clientY - wrapRect.top - 38
-      tooltip.style.display = 'block'
-      const ttW = tooltip.offsetWidth
-      if (tx + ttW > wrapRect.width - 8) tx = e.clientX - wrapRect.left - ttW - 14
-      if (ty < 4) ty = e.clientY - wrapRect.top + 14
-      tooltip.style.left = tx + 'px'
-      tooltip.style.top = ty + 'px'
+    const series: unknown[] = []
+
+    // Connected dashed trend line (drawn behind the dots, no tooltip).
+    if (points.length >= 2) {
+      series.push({
+        type: 'line',
+        data: points.map(p => p.agg),
+        showSymbol: false,
+        animation: false,
+        silent: true,
+        lineStyle: { type: 'dashed', color: hexToRgba(sig.color, 0.5), width: 2 },
+        itemStyle: { color: sig.color },
+        z: 2,
+      })
     }
 
-    const onLeave = () => { tooltip.style.display = 'none' }
-    canvas.addEventListener('mousemove', onMove)
-    canvas.addEventListener('mouseleave', onLeave)
-    return () => {
-      canvas.removeEventListener('mousemove', onMove)
-      canvas.removeEventListener('mouseleave', onLeave)
-    }
+    // Scatter dots with glow + value labels; item tooltip shows the extreme
+    // timestamp for min/max aggregation modes.
+    series.push({
+      type: 'scatter',
+      data: points.map(p => p.agg),
+      symbol: 'circle',
+      symbolSize: 10,
+      animation: false,
+      itemStyle: {
+        color: sig.color,
+        borderColor: '#ffffff30',
+        borderWidth: 1.5,
+        shadowBlur: 10,
+        shadowColor: hexToRgba(sig.color, 0.27),
+      },
+      label: {
+        show: true,
+        position: 'top',
+        distance: 10,
+        color: sig.color,
+        fontFamily: CHART.font,
+        fontSize: 11,
+        formatter: (p: CallbackDataParams) => fmtVal(Number(p.value), sig.decimals),
+      },
+      tooltip: {
+        trigger: 'item',
+        appendToBody: true,
+        confine: true,
+        backgroundColor: '#0c1622',
+        borderColor: 'rgba(255,255,255,.16)',
+        borderWidth: 1,
+        padding: 0,
+        textStyle: { color: '#d8e2ee', fontFamily: CHART.font, fontSize: 11 },
+        extraCssText: TOOLTIP_CSS,
+        formatter: (p: CallbackDataParams) => {
+          const point = points[p.dataIndex]
+          if (!point) return ''
+          const timeStr = point.extremeT
+            ? `<div style="color:var(--muted);margin-top:3px">${fmtExtremeTime(point.extremeT)}</div>`
+            : ''
+          return (
+            `<div style="font-family:var(--mono);font-size:11px;color:var(--text);white-space:nowrap">` +
+            `<span style="color:var(--muted)">Lap </span><span style="color:${sig.color};font-weight:600">${point.lap}</span>` +
+            `<span style="color:rgba(255,255,255,.14)"> · </span><span style="color:${sig.color};font-weight:600">${point.agg.toFixed(dec)}</span>` +
+            `<span style="color:var(--muted)"> ${sig.unit}</span>${timeStr}</div>`
+          )
+        },
+      },
+      z: 4,
+    })
+
+    return {
+      animation: false,
+      grid: { left: 64, right: 28, top: 44, bottom: 48 },
+      xAxis: {
+        type: 'category',
+        data: points.map(p => 'Lap ' + p.lap),
+        boundaryGap: false,
+        axisLine: { lineStyle: { color: CHART.axis, width: 1 } },
+        axisTick: { show: false },
+        axisLabel: { color: CHART.label, fontFamily: CHART.font, fontSize: 11 },
+        splitLine: { show: false },
+      },
+      yAxis: {
+        type: 'value',
+        min: yLo,
+        max: yHi,
+        splitNumber: 5,
+        name: sig.unit || '',
+        nameLocation: 'middle',
+        nameRotate: 90,
+        nameGap: 16,
+        nameTextStyle: { color: CHART.label, fontFamily: CHART.font, fontSize: 10 },
+        axisLine: { lineStyle: { color: CHART.axis, width: 1 } },
+        axisTick: { show: false },
+        axisLabel: {
+          color: CHART.label,
+          fontFamily: CHART.font,
+          fontSize: 11,
+          formatter: (val: number) => fmtVal(val, sig.decimals),
+        },
+        splitLine: { show: true, lineStyle: { color: CHART.grid, width: 0.5 } },
+      },
+      series,
+    } as EChartsCoreOption
   }, [sig, points])
 
   return (
     <div className="la-chart-wrap">
-      <canvas ref={canvasRef} id="laCanvas"></canvas>
-      <div ref={tooltipRef} id="laTooltip" style={{ display: 'none', position: 'absolute', pointerEvents: 'none', background: 'var(--navy2)', border: '1px solid var(--border3)', padding: '6px 10px', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text)', whiteSpace: 'nowrap', zIndex: 10, boxShadow: '0 2px 8px rgba(0,0,0,.4)' }}></div>
+      <EChart id="laCanvas" option={option} />
     </div>
   )
 }

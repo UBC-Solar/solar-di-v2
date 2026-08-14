@@ -9,8 +9,8 @@ import type { View } from '../components/PlotCanvas'
 import { buildCsv } from './exportCsv'
 
 // Port of js/data.js + js/datetime-widget.js. React owns the toolbar/legend
-// (rendered declaratively); the canvas draws imperatively in a rAF loop reading
-// getState() + a `view` memo (see PlotCanvas).
+// (rendered declaratively); the time-series plot renders through ECharts from a
+// `view` memo + the store (see PlotCanvas).
 
 const PRESETS = [
   { s: 30, label: '30s' },
