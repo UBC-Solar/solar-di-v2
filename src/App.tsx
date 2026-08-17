@@ -9,6 +9,8 @@ import MapTab from './tabs/MapTab'
 import OverviewTab from './tabs/OverviewTab'
 import type { TabId } from './tabs'
 
+// This file holds the app's state. It stores which tab is open, the search b
+
 interface JumpRequest {
   field: string
   from: number
