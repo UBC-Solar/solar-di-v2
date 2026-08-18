@@ -1,4 +1,5 @@
 export interface SignalDef {
+  key: string
   field: string
   stage: string
   label: string

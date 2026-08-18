@@ -1,4 +1,4 @@
-import { API_BASE_URL, PALETTE } from './constants'
+import { API_BASE_URL, PALETTE, SIGNALS } from './constants'
 import { getState, push, pushGPS, replaceSignals, setEvents, setSelectedEvent, setSourceStatus } from './store'
 import type { ApiEvent, ApiSignal, SignalDef, StageDef, StreamBatch, StreamGps } from './types'
 
@@ -11,7 +11,9 @@ function assignColors(signals: ApiSignal[]): Record<string, string> {
 
 function apiSignalToSignal(s: ApiSignal, colorMap: Record<string, string>): SignalDef {
   const src = s.source || ''
+  const known = SIGNALS.find(sig => sig.field === s.name)
   return {
+    key: known ? known.key : s.name.replace(/^[A-Z]/, c => c.toLowerCase()),
     field: s.name,
     stage: src.toLowerCase(),
     label: s.name,
