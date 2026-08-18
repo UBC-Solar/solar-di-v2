@@ -173,6 +173,15 @@ function OverviewTab() {
             </div>
           </div>
 
+          {/* 8: test */}
+          <div className="ov-card">
+            <div className="ov-card-label">New Signal</div>
+            <div className="ov-big">
+              <span className="ov-big-val" style={{ color: '#ff0000' }}>{fmt(val('nsm'), 1)}</span>
+              <span className="ov-big-unit">W</span>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>

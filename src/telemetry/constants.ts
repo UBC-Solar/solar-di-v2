@@ -66,6 +66,19 @@ export const SIGNALS: SignalDef[] = [
 
   // ── SOC ──
   { field: 'SOC',                 stage: 'soc',        label: 'State of Charge',     unit: '',     color: '#c9a84c', decimals: 3, yMin: 0,   yMax: 1,    help: 'Thevenin + Extended Kalman Filter SOC. Uses voltage to correct for sensor drift.' },
+  
+  //test
+  {
+  field: 'NewSignalName',       // must match the wire name from Sunbeam
+  stage: 'ingress',             // which group it belongs to
+  label: 'New Signal',          // human-readable name
+  unit: 'W',                    // display unit
+  color: '#ff0000',             // hex color
+  decimals: 1,                  // display precision
+  yMin: 0,                      // plot range min
+  yMax: 1000,                   // plot range max
+  help: 'Description of what this signal measures',
+  }
 ]
 
 // Backwards-compat alias for map color-by & calc engine

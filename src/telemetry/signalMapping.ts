@@ -35,6 +35,7 @@ export const OVERVIEW_MAPPING = [
   { key: 'windSpeed',   names: ['WindSpeed'] },
   { key: 'windDir',     names: ['WindDirection'] },
   { key: 'zenith',      names: ['Zenith'] },
+  { key: 'nsm',      names: ['NewSignalName'] }, //test
 ] as const
 
 export const CALC_MAPPING = [
