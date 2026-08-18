@@ -205,9 +205,9 @@ main.tsx
         │   └── <PlotCanvas>       components/PlotCanvas.tsx
         │       └── <EChart>       components/EChart.tsx
         ├── <MapTab>               tabs/MapTab.tsx
-        │   └── <DateTimePicker>
+        │   └── <DateTimePicker>   components/DateTimePicker.tsx
         ├── <CalcTab>              tabs/CalcTab.tsx
-        │   ├── <DateTimePicker>
+        │   ├── <DateTimePicker>   components/DateTimePicker.tsx
         │   ├── <EChart>           (mini charts)
         │   └── <ResultsView>      (inside CalcTab)
         └── <LapAnalysisTab>       tabs/LapAnalysisTab.tsx
