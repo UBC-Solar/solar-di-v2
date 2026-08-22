@@ -54,7 +54,7 @@ export default defineConfig({
   // run. Re-enable (plugins: [react(), cspPlugin()]) once the tile host is
   // added to img-src or tiles are self-hosted.
   server: {
-    port: 5173,
+    port: 5183,
     strictPort: true,
     proxy: {
       // Sunbeam doesn't send CORS headers, so route /events through the dev

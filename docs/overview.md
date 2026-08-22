@@ -34,7 +34,7 @@ It works with the **real car** over the Sunbeam HTTP/SSE API, and with a
 ```
   ┌──────────────────────────────────────────────────────────────┐
   │  ELECTRON (electron/main.cjs)                                │
-  │  Opens a BrowserWindow. In dev it loads http://localhost:5173│
+  │  Opens a BrowserWindow. In dev it loads http://localhost:5183│
   │  (Vite dev server). In production it loads dist/index.html.  │
   └──────────────────────────────┬───────────────────────────────┘
                                  │ loads
@@ -130,7 +130,7 @@ Two notable things:
   "dev": "vite",
   "build": "tsc -b && vite build",
   "lint": "eslint .",
-  "electron:dev": "concurrently ... \"vite\" ... \"wait-on ... && VITE_DEV_SERVER_URL=http://localhost:5173 electron .\""
+  "electron:dev": "concurrently ... \"vite\" ... \"wait-on ... && VITE_DEV_SERVER_URL=http://localhost:5183 electron .\""
 }
 ```
 

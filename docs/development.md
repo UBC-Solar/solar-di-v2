@@ -9,7 +9,7 @@ All run from the repo root.
 
 | Command | What it does |
 |---|---|
-| `npm run dev` | Start the Vite dev server (browser only) at `http://localhost:5173` |
+| `npm run dev` | Start the Vite dev server (browser only) at `http://localhost:5183` |
 | `npm run electron:dev` | Start Vite **and** open an Electron window pointed at it |
 | `npm run build` | Type-check (`tsc -b`) then bundle (`vite build`) into `dist/` |
 | `npm run preview` | Serve the built `dist/` locally |
